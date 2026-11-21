@@ -182,5 +182,5 @@ qs -c frieren -d         # daemon
 ```
 
 The tray helper is a child of `qs` and exits with it (parent death signal). To
-rebuild the poses or the icon, use `tools/slice_spritesheet.py` (Pillow) and
-`tools/make_icon.sh` (ImageMagick, xxd, sed) from the repo.
+rebuild the icon, use `tools/make_icon.sh` (ImageMagick, xxd, sed) from the
+repo. The pose PNGs are checked in; edit them directly.

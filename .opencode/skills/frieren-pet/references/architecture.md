@@ -18,10 +18,10 @@ icon with a DBusMenu.
 | `quickshell/frieren/tray.c` | Native StatusNotifierItem and `com.canonical.dbusmenu` helper (compiled to `frieren-tray`) |
 | `quickshell/frieren/components/AuthDialog.qml` | OpenCode account card (status, key, terminal login) |
 | `quickshell/frieren/assets/poses/` | Six 228x256 PNG poses plus `poses.json` metadata |
+| `assets/frieren-sheet.png` | Source sprite sheet, kept as art reference |
+| `assets/poses-preview.png` | README showcase image (checked in) |
 | `quickshell/frieren/assets/frieren-icon*.png` | Tray icon and chat avatar |
 | `opencode/agents/frieren.md` | Persona, model and permission denylist |
-| `tools/slice_spritesheet.py` | Slices the source sheet, keys the magenta background, writes poses and metadata |
-| `tools/make_poses_preview.py` | Builds the README showcase image |
 | `tools/make_icon.sh` | Builds the tray icon and raw ARGB buffers |
 | `hypr/frieren.lua` | Keybind and autostart |
 | `install.sh` | Copies the shell and agent into `~/.config` |

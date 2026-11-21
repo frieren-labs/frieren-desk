@@ -47,7 +47,7 @@ Item {
     readonly property string assets: home + "/.config/quickshell/frieren/assets/"
     readonly property string baseSprite: assets + "poses/idle.png"
 
-    // Poses are cropped to this canvas with tools/slice_spritesheet.py.
+    // Poses are authored on this 228x256 canvas.
     readonly property int spriteW: 228
     readonly property int spriteH: 256
 

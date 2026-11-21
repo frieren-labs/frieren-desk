@@ -67,11 +67,8 @@ hl.bind("SUPER + SHIFT + R", hl.dsp.exec_cmd("qs -c frieren ipc call frieren tog
 | `sad` | an error came back | `oops…` |
 | `sleep` | idle for a while with sleep enabled | `zzz…` |
 
-The image is generated from the real sprites in
-`quickshell/frieren/assets/poses/`, so it matches what you get after install.
-For development, regenerate it with `python3 tools/make_poses_preview.py`. The
-Python tooling is only used to build the assets; Frieren does not need Python at
-runtime.
+The image shows the real sprites from `quickshell/frieren/assets/poses/`, so it
+matches what you get after install.
 
 ## Docs
 
@@ -80,8 +77,8 @@ runtime.
 | Config, tray menu and animations | `quickshell/frieren/README.md` |
 | OpenCode account setup | tray menu, `quickshell/frieren/components/AuthDialog.qml`, `shell.qml` |
 | Persona and permissions | `opencode/agents/frieren.md` |
-| Sprite sheet and icon pipeline (development) | `assets/frieren-sheet.png`, `tools/slice_spritesheet.py`, `tools/make_icon.sh` |
-| README showcase image (development) | `tools/make_poses_preview.py` |
+| Source sprite sheet (art reference) | `assets/frieren-sheet.png` |
+| Tray icon pipeline (development) | `tools/make_icon.sh` |
 | Hyprland bind and autostart | `hypr/frieren.lua` |
 | Installer and app menu launcher | `install.sh`, `tools/frieren-launch.sh` |
 

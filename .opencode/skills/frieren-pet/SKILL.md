@@ -46,7 +46,7 @@ skills cannot know.
 | Tray menu | `tray.c`, `.opencode/skills/frieren-pet/references/state-tray-ipc.md` |
 | IPC | `shell.qml` (`IpcHandler`), `quickshell/frieren/README.md` |
 | Theme | `shell.qml` (`theme`, `applyDmsColors`, `applyDmsType`) |
-| New pose art | `assets/frieren-sheet.png`, `tools/slice_spritesheet.py`, `README.md` |
+| New pose art | `assets/poses/*.png`, `assets/poses/poses.json`, `README.md` |
 | Install or launch | `install.sh`, `hypr/frieren.lua` |
 
 ## Recipes
@@ -73,11 +73,13 @@ skills cannot know.
 
 ### Add or change a pose
 
-1. Put the new cell in `assets/frieren-sheet.png` or slice it manually to the
-   228x256 canvas.
-2. Follow `references/poses-and-animation.md` for the `poses.json` schema.
+1. Add or replace the affected 228x256 PNG in `assets/poses/`. The source sheet
+   in `assets/frieren-sheet.png` is kept as art reference; there is no slicing
+   script in the repo.
+2. Follow `references/poses-and-animation.md` for the `poses.json` schema and
+   update the file, eyes, skin and glow entries.
 3. Update the `mood` mapping in `PetSprite.qml` and the pose table in `README.md`.
-4. Regenerate `assets/poses-preview.png` with `tools/make_poses_preview.py`.
+4. Update `assets/poses-preview.png` if the README image should change.
 5. Verify the eye rectangles and the staff glow point on screen.
 
 ### Change the chat

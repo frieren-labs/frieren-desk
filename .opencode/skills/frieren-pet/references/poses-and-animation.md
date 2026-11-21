@@ -1,7 +1,6 @@
 # Poses and animation
 
-All of this lives in `components/PetSprite.qml`, `assets/poses/poses.json` and
-`tools/slice_spritesheet.py`.
+All of this lives in `components/PetSprite.qml` and `assets/poses/poses.json`.
 
 ## Pose selection
 
@@ -116,27 +115,12 @@ When `asleep` is true:
 
 Missing fields fall back to the `idle` pose metadata, then to hardcoded defaults.
 
-## Sprite pipeline
+## Sprite assets
 
-`tools/slice_spritesheet.py` expects a magenta-background sheet, default 3x2:
-
-```bash
-python3 tools/slice_spritesheet.py assets/frieren-sheet.png
-```
-
-Development only: the installed app does not need Python. This script rebuilds
-the checked-in pose assets.
-
-It keys out magenta with a soft alpha and despill, crops each cell, scales all
-poses by the same factor, anchors by the face, grounds the feet, writes six
-228x256 PNGs, generates `poses.json`, and renders `preview.png`.
-
-Defaults: names `idle,think,cast,happy,sad,sleep`, scale 0.5, canvas 228x256,
-ground y 253, ground line 501, jump pose `happy`. Override with flags when the
-sheet layout changes.
-
-`tools/make_poses_preview.py` builds the README showcase from the generated
-poses, so run it after changing art.
+The six poses are checked-in 228x256 PNGs in `assets/poses/`. The magenta source
+sheet in `assets/frieren-sheet.png` is kept as art reference. There is no
+slicing or preview script in the repo; edit the PNGs and `poses.json` directly
+when the art changes.
 
 ## Animation layers
 
