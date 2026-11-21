@@ -32,6 +32,23 @@ hl.bind("SUPER + SHIFT + R", hl.dsp.exec_cmd("qs -c frieren ipc call frieren tog
 - Click the tray icon: show/hide, chat actions, animation settings and quit.
 - State and settings: `~/.local/state/frieren/state.json`.
 
+## What it looks like
+
+![Frieren poses with the chat panel open](assets/poses-preview.png)
+
+| Pose | When it shows | Chat line |
+| --- | --- | --- |
+| `idle` | waiting, or wandering around | `ask me something` |
+| `think` | opencode is reasoning | `thinking…` |
+| `cast` | a tool is running | `casting a spell…` |
+| `happy` | a task finished, or she wakes up | `done` |
+| `sad` | an error came back | `oops…` |
+| `sleep` | idle for a while with sleep enabled | `zzz…` |
+
+The image is generated from the real sprites in
+`quickshell/frieren/assets/poses/`, so it matches what you get after install.
+Regenerate it with `python3 tools/make_poses_preview.py`.
+
 ## Docs
 
 | Topic | Where |
@@ -39,6 +56,7 @@ hl.bind("SUPER + SHIFT + R", hl.dsp.exec_cmd("qs -c frieren ipc call frieren tog
 | Config, tray menu and animations | `quickshell/frieren/README.md` |
 | Persona and permissions | `opencode/agents/frieren.md` |
 | Sprite sheet and icon pipeline | `assets/frieren-sheet.png`, `tools/slice_spritesheet.py`, `tools/make_icon.sh` |
+| README showcase image | `tools/make_poses_preview.py` |
 | Hyprland bind and autostart | `hypr/frieren.lua` |
 | Installer | `install.sh` |
 
