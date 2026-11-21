@@ -7,26 +7,27 @@ its IPC:
 
     qs -c frieren ipc call frieren <method> [args]
 
-The helper also exits by itself when the Frieren IPC stops answering, so a
-restart of the shell does not leave an orphan icon behind.
+The helper exits with the shell: it asks the kernel for a parent death signal, so
+a crash or restart does not leave an orphan icon behind. State changes are
+watched with Gio file monitoring, with a cheap mtime poll as a fallback.
 
 Requires: python-dbus, python-gobject.
 """
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import shutil
 import signal
 import subprocess
 import sys
-import time
 
 import dbus
 import dbus.service
 import dbus.mainloop.glib
-from gi.repository import GLib
+from gi.repository import Gio, GLib
 
 SNI_PATH = "/StatusNotifierItem"
 MENU_PATH = "/MenuBar"
@@ -50,6 +51,7 @@ ID_LARGE = 13
 ID_RESET = 14
 ID_SEP_2 = 15
 ID_QUIT = 16
+ID_AUTH = 17
 
 DEFAULTS = {
     "minimized": False,
@@ -57,9 +59,22 @@ DEFAULTS = {
     "sleep": True,
     "blink": True,
     "scale": 1.0,
+    "auth": False,
     "busy": False,
     "chatOpen": False,
 }
+
+
+def set_parent_death_signal() -> None:
+    """Terminate with the qs process instead of polling its IPC."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        PR_SET_PDEATHSIG = 1
+        libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+        if os.getppid() == 1:
+            raise SystemExit(0)
+    except OSError:
+        pass
 
 
 def read_bytes(path: str) -> bytes:
@@ -83,6 +98,7 @@ def read_state(path: str) -> dict:
     state["wander"] = bool(raw.get("wander", True))
     state["sleep"] = bool(raw.get("sleep", True))
     state["blink"] = bool(raw.get("blink", True))
+    state["auth"] = bool(raw.get("auth", False))
     state["busy"] = bool(raw.get("busy", False))
     state["chatOpen"] = bool(raw.get("chatOpen", False))
     try:
@@ -153,6 +169,8 @@ class FrierenMenu(dbus.service.Object):
         add(ID_FRESH, self._entry("New conversation"))
         add(ID_STOP, self._entry("Stop", enabled=state["busy"]))
         add(ID_SEP_1, self._entry(kind="separator"))
+        add(ID_AUTH, self._entry(
+            "OpenCode account" if state["auth"] else "Connect OpenCode account..."))
         add(ID_SETTINGS, self._entry("Settings", kind="submenu", children_display="submenu"),
             [ID_WANDER, ID_SLEEP, ID_BLINK, ID_SIZE, ID_RESET])
         add(ID_WANDER, self._entry("Wander", toggle_type="checkmark",
@@ -199,6 +217,7 @@ class FrierenMenu(dbus.service.Object):
             ID_TOGGLE_PET, ID_CHAT, ID_STOP,
             ID_WANDER, ID_SLEEP, ID_BLINK,
             ID_SMALL, ID_MEDIUM, ID_LARGE,
+            ID_AUTH,
         ):
             if node_id in tree:
                 updated.append(dbus.Struct(
@@ -225,7 +244,7 @@ class FrierenMenu(dbus.service.Object):
                 root,
                 dbus.Array([self._node(child, tree) for child in
                             [ID_TOGGLE_PET, ID_CHAT, ID_FRESH, ID_STOP, ID_SEP_1,
-                             ID_SETTINGS, ID_SEP_2, ID_QUIT]], signature="v"),
+                             ID_AUTH, ID_SETTINGS, ID_SEP_2, ID_QUIT]], signature="v"),
             ), signature="ia{sv}av")
         elif parent in tree:
             layout = self._node(parent, tree)
@@ -267,7 +286,7 @@ class FrierenMenu(dbus.service.Object):
     def AboutToShow(self, node_id):
         return False
 
-    @dbus.service.method("com.canonical.dbusmenu", in_signature="ai", out_signature="ai ai")
+    @dbus.service.method("com.canonical.dbusmenu", in_signature="ai", out_signature="aiai")
     def AboutToShowGroup(self, ids):
         return dbus.Array([], signature="i"), dbus.Array([], signature="i")
 
@@ -330,6 +349,8 @@ class FrierenMenu(dbus.service.Object):
             self.item.call("scale", "1.15")
         elif node_id == ID_RESET:
             self.item.call("resetpos")
+        elif node_id == ID_AUTH:
+            self.item.call("auth")
         elif node_id == ID_QUIT:
             self.item.call("quit")
 
@@ -353,15 +374,14 @@ class FrierenItem(dbus.service.Object):
         self.state_path = state_path
         self.loop = loop
         self.qs = shutil.which("qs") or "/usr/bin/qs"
-        self.started = time.time()
         self.last_state_mtime = 0
+        self.state_monitor = None
         super().__init__(bus_name, SNI_PATH)
         self.menu = FrierenMenu(bus_name, self)
 
         GLib.timeout_add_seconds(1, self._register)
-        GLib.timeout_add_seconds(5, self._health)
         GLib.timeout_add_seconds(30, self._reregister)
-        GLib.timeout_add(500, self._watch_state)
+        self._watch_state_file()
 
     # ---------------- properties ----------------
     def _props(self) -> dict:
@@ -427,15 +447,42 @@ class FrierenItem(dbus.service.Object):
         pass
 
     # ---------------- helpers ----------------
-    def _watch_state(self) -> bool:
+    def _state_mtime(self) -> int:
         try:
-            mtime = int(os.path.getmtime(self.state_path) * 1000)
+            return int(os.path.getmtime(self.state_path) * 1000)
         except OSError:
-            mtime = 0
+            return 0
+
+    def _refresh_state(self) -> None:
+        mtime = self._state_mtime()
         if mtime != self.last_state_mtime:
             self.last_state_mtime = mtime
             self.menu.notify_state()
+
+    def _watch_state(self) -> bool:
+        self._refresh_state()
         return True
+
+    def _state_changed(self, monitor, file, other_file, event_type) -> None:
+        self._refresh_state()
+
+    def _watch_state_file(self) -> None:
+        # monitor_file also reports creation, but the parent directory must
+        # exist. The shell creates it on the first save.
+        state_dir = os.path.dirname(self.state_path)
+        if state_dir:
+            try:
+                os.makedirs(state_dir, exist_ok=True)
+            except OSError:
+                pass
+        try:
+            monitor = Gio.File.new_for_path(self.state_path).monitor_file(
+                Gio.FileMonitorFlags.NONE, None
+            )
+            monitor.connect("changed", self._state_changed)
+            self.state_monitor = monitor
+        except GLib.Error:
+            GLib.timeout_add(500, self._watch_state)
 
     def call(self, *args: str) -> None:
         print(f"[frieren-tray] ipc {' '.join(args)}", flush=True)
@@ -481,29 +528,6 @@ class FrierenItem(dbus.service.Object):
             pass
         return True
 
-    def _ping(self) -> bool:
-        try:
-            result = subprocess.run(
-                [self.qs, "-c", CONFIG_NAME, "ipc", "call", CONFIG_NAME, "ping"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=3,
-            )
-            return result.returncode == 0
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-
-    def _health(self) -> bool:
-        if self._ping():
-            return True
-        if time.time() - self.started < 10:
-            return True
-        print("[frieren-tray] Frieren IPC is gone, exiting", file=sys.stderr, flush=True)
-        self.loop.quit()
-        return False
-
-
 def main() -> int:
     if len(sys.argv) < 6:
         print("usage: tray.py ICON.png ICON-128.argb ICON-64.argb ICON-32.argb STATE.json",
@@ -513,6 +537,8 @@ def main() -> int:
     icon_png = sys.argv[1]
     argb_paths = {128: sys.argv[2], 64: sys.argv[3], 32: sys.argv[4]}
     state_path = sys.argv[5]
+
+    set_parent_death_signal()
 
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     connection = dbus.SessionBus()

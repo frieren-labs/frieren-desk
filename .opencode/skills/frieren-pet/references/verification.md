@@ -7,7 +7,7 @@ reading the diff.
 
 ```bash
 # Python helper syntax
-python3 -m py_compile quickshell/frieren/tray.py
+python3 -m py_compile quickshell/frieren/tray.py quickshell/frieren/auth.py
 
 # Shell scripts
 bash -n .opencode/skills/frieren-pet/scripts/*.sh
@@ -47,6 +47,11 @@ cat ~/.local/state/frieren/state.json
 
 The tray output must show `toggle-type: checkmark` for Wander, Sleep when idle
 and Blink, and `toggle-type: radio` for Size. `check` is a bug.
+
+The helper should be a child of `qs` and disappear within a second of
+`qs -c frieren ipc call frieren quit`. It should not spawn periodic `qs ...
+ping` children; idle CPU is zero and state changes arrive through the Gio file
+monitor.
 
 Toggle each item and confirm all three layers agree:
 
@@ -97,6 +102,21 @@ Toggle each item and confirm all three layers agree:
 - No component uses a hardcoded color outside the fallback theme.
 - Fonts fall back cleanly when the DMS typography file is missing.
 
+### Account
+
+- With credentials, the tray shows `OpenCode account` and the dialog shows
+  `Connected` with the method labels.
+- Without credentials (empty `XDG_DATA_HOME`, no `OPENCODE_API_KEY`), the tray
+  shows `Connect OpenCode account...`, the chat shows the banner, and sending a
+  message opens the dialog instead of running opencode.
+- Saving a key clears the field, shows `Key saved.`, flips the status to
+  `Connected`, removes the banner and writes `auth: true` to `state.json`.
+- Saving again replaces the previous `Frieren` credential, so
+  `opencode auth list` has only one.
+- Terminal login opens a terminal and the status updates without reopening the
+  dialog (4 second poll).
+- The key never appears in `ps`, `state.json` or the shell logs.
+
 ## Failure diagnosis
 
 | Symptom | Check |
@@ -104,9 +124,13 @@ Toggle each item and confirm all three layers agree:
 | No pet | `qs -c frieren` foreground logs, screen size, `placePet` |
 | Chat does not open | `toggle` IPC, `chatOpen`, monitor geometry |
 | Chat opens but no reply | `opencode` in PATH, auth, `opencode auth list`, stdin closed |
+| Account says not connected | `auth.py status opencode-go`, `opencode auth list`, env vars |
+| Key save fails | `opencode auth import`, `auth switch`, dialog message |
+| Tray label never changes | `auth` in `state.json`, `notify_state` includes ID 17 |
 | Pet stuck casting | `toolActive`, last tool status, late events |
 | Stale text after fresh | late stdout from the old process, run ID guard |
 | Tray icon missing | helper process, StatusNotifierWatcher, DMS tray settings |
+| Orphan tray icon | helper PPID is not `qs`; parent death signal, restart helper |
 | Menu checkboxes missing | `toggle-type` values, Quickshell warning log |
 | Checkmarks stale | state write, mtime, `notify_state`, reopen menu |
 | Wrong position after restart | `state.json`, `lastGoodX/Y`, `petY < 60` reset |

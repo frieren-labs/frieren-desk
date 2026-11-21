@@ -11,8 +11,8 @@ with a settings menu.
 ## Install
 
 Requires: [Quickshell](https://quickshell.org) 0.3+, [opencode](https://opencode.ai)
-v2 with an authenticated provider, Hyprland, Qt 6, and `python3` with
-`python-dbus` and `python-gobject` for the tray icon.
+v2, Hyprland, Qt 6, and `python3` with `python-dbus` and `python-gobject` for
+the tray icon. The opencode account is configured after install.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash
@@ -36,6 +36,10 @@ From a clone, `./install.sh` does the same without downloading. Set
 Then open **Frieren** from the app menu (or run `~/.local/bin/frieren`). Run it
 again any time she is closed: it starts the pet and opens the chat, or toggles
 the chat when she is already on screen.
+
+On a fresh install, open the tray icon and choose **Connect OpenCode account...**
+to paste an API key, or use **Terminal login** for providers that need a browser.
+The chat shows a banner until the account is connected.
 
 Add the keybind and autostart from `hypr/frieren.lua`, or bind:
 
@@ -70,6 +74,7 @@ Regenerate it with `python3 tools/make_poses_preview.py`.
 | Topic | Where |
 | --- | --- |
 | Config, tray menu and animations | `quickshell/frieren/README.md` |
+| OpenCode account setup | tray menu, `quickshell/frieren/auth.py`, `components/AuthDialog.qml` |
 | Persona and permissions | `opencode/agents/frieren.md` |
 | Sprite sheet and icon pipeline | `assets/frieren-sheet.png`, `tools/slice_spritesheet.py`, `tools/make_icon.sh` |
 | README showcase image | `tools/make_poses_preview.py` |

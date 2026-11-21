@@ -16,6 +16,8 @@ icon with a DBusMenu.
 | `quickshell/frieren/components/ChatPanel.qml` | Chat frame, header, list and input |
 | `quickshell/frieren/components/MessageBubble.qml` | Message and tool log rendering |
 | `quickshell/frieren/tray.py` | StatusNotifierItem and `com.canonical.dbusmenu` helper |
+| `quickshell/frieren/auth.py` | opencode account status and non-interactive key import |
+| `quickshell/frieren/components/AuthDialog.qml` | OpenCode account card (status, key, terminal login) |
 | `quickshell/frieren/assets/poses/` | Six 228x256 PNG poses plus `poses.json` metadata |
 | `quickshell/frieren/assets/frieren-icon*.png` | Tray icon and chat avatar |
 | `opencode/agents/frieren.md` | Persona, model and permission denylist |
@@ -83,6 +85,19 @@ must stay clickable.
 If keyboard focus does not arrive when the chat opens, the documented fallback
 is `WlrKeyboardFocus.Exclusive`, but it blocks global keys while open.
 
+### Account dialog
+
+`authWin` is a third fullscreen `PanelWindow`:
+
+- Visible only when `authOpen`; `mask: Region { item: authDialog }` keeps the
+  rest of the desktop clickable.
+- Centered `AuthDialog` card, `WlrLayershell.keyboardFocus: OnDemand`.
+- Shows the status from `opencode auth list` and offers key import, terminal
+  login and a manual re-check.
+- Polls the status every 4 seconds while open (except while saving) so a login
+  finished in a terminal is picked up.
+- It is declared after `chatWin`, so it renders above the chat.
+
 ## Theme
 
 `shell.qml` defines a fallback `theme` object, then overrides it from DMS files:
@@ -100,11 +115,14 @@ the component.
 ```text
 qs -c frieren
 ├── opencode run ...        (one process per message)
+├── python3 auth.py ...     (short-lived status and key import)
+├── sh -c <terminal> ...    (terminal login, only when requested)
 └── python3 tray.py ...     (long-lived helper)
 ```
 
 - The opencode process runs with `HOME` as the working directory and a PATH that
   starts with `~/.opencode/bin`.
 - Its stdin is closed with `< /dev/null`. Without that, opencode waits for EOF.
-- The tray helper owns the bus name `org.kde.StatusNotifierItem-frieren` and
-  exits by itself when the Frieren IPC stops answering.
+- The tray helper owns the bus name `org.kde.StatusNotifierItem-frieren` and is
+  a child of `qs`. It takes a parent death signal, so it exits with the shell,
+  and it watches `state.json` with a Gio file monitor.

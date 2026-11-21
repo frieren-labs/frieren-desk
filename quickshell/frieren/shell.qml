@@ -11,6 +11,32 @@ ShellRoot {
     readonly property string opencodeBin: home + "/.opencode/bin/opencode"
     readonly property string agentName: "frieren"
     readonly property string modelName: "opencode-go/deepseek-v4.1-flash"
+    readonly property string authProvider: modelName.split("/")[0]
+    readonly property string authScript: home + "/.config/quickshell/frieren/auth.py"
+    readonly property bool authMissing: authStatus === "missing"
+    readonly property string terminalLauncher: [
+        "for term in xdg-terminal-exec foot kitty alacritty ghostty wezterm konsole gnome-terminal xterm; do",
+        "  command -v \"$term\" >/dev/null 2>&1 || continue",
+        "  case \"$term\" in",
+        "    xdg-terminal-exec|foot|kitty) exec \"$term\" \"$0\" auth login \"$1\" ;;",
+        "    alacritty|ghostty|konsole|xterm) exec \"$term\" -e \"$0\" auth login \"$1\" ;;",
+        "    wezterm) exec \"$term\" start -- \"$0\" auth login \"$1\" ;;",
+        "    gnome-terminal) exec \"$term\" -- \"$0\" auth login \"$1\" ;;",
+        "  esac",
+        "done",
+        "exit 127"
+    ].join("\n")
+
+    // OpenCode account state. A bool copy goes to state.json for the tray menu.
+    property string authStatus: "unknown" // unknown | connected | missing | error
+    property string authDetail: ""
+    property string authMessage: ""
+    property bool authMessageOk: false
+    property bool authMessageError: false
+    property bool authChecking: false
+    property bool authSaving: false
+    property bool authOpen: false
+    property bool stateLoaded: false
 
     property bool chatOpen: false
     property bool busy: false
@@ -105,6 +131,12 @@ ShellRoot {
         path: root.statePath
         printErrors: false
         onLoaded: root.loadState(text())
+        onLoadFailed: {
+            // No state file yet, or it cannot be read. Do not block the auth
+            // flag from reaching the tray menu.
+            root.stateLoaded = true;
+            if (root.authStatus !== "unknown") root.saveState();
+        }
     }
 
     Process {
@@ -138,6 +170,10 @@ ShellRoot {
         }
 
         root.placePet();
+        root.stateLoaded = true;
+        // The auth check can finish before the state file loads. Persist the
+        // account flag now that the loaded values are in place.
+        if (root.authStatus !== "unknown") root.saveState();
     }
 
     property bool petPlaced: false
@@ -170,6 +206,7 @@ ShellRoot {
             sleep: root.sleepEnabled,
             blink: root.blinkEnabled,
             scale: root.petScale,
+            auth: root.authStatus === "connected",
             busy: root.busy,
             chatOpen: root.chatOpen
         });
@@ -321,6 +358,12 @@ ShellRoot {
         text = String(text || "").trim();
         if (text.length === 0) return;
         if (root.minimized) root.restorePet();
+        if (root.authStatus === "missing") {
+            addMessage("system", "OpenCode is not connected. Add your API key to continue.");
+            root.chatOpen = true;
+            root.openAuthDialog();
+            return;
+        }
         if (busy) {
             addMessage("system", "I'm still working on the previous request. Wait or press the stop button.");
             return;
@@ -378,8 +421,98 @@ ShellRoot {
         }
         if (chatOpen) pet.wake();
         if (chatOpen && chat.count === 0) {
-            addMessage("assistant", "Hi. I'm Frieren. Ask me to do something on the system, or ask me anything.");
+            addMessage("assistant", root.authMissing
+                ? "Hi. I'm Frieren. Connect your OpenCode account with the banner below, then ask me anything."
+                : "Hi. I'm Frieren. Ask me to do something on the system, or ask me anything.");
         }
+    }
+
+    // ---------------- opencode account ----------------
+    function parseAuthResponse(raw) {
+        const text = String(raw || "").trim();
+        if (text.length === 0) return null;
+        const lines = text.split("\n");
+        try {
+            return JSON.parse(lines[lines.length - 1]);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function applyAuthStatus(raw) {
+        const res = root.parseAuthResponse(raw);
+        let nextStatus = "error";
+        let nextDetail = "";
+        if (!res) {
+            nextDetail = "No response from opencode.";
+        } else if (!res.ok) {
+            nextDetail = res.error || "Could not read the opencode account.";
+        } else {
+            nextStatus = res.connected ? "connected" : "missing";
+            nextDetail = (res.methods || []).join(", ");
+        }
+        const changed = root.authStatus !== nextStatus;
+        root.authStatus = nextStatus;
+        root.authDetail = nextDetail;
+        if (changed && root.stateLoaded) root.saveState();
+    }
+
+    function checkAuth() {
+        if (authStatusProc.running) return;
+        root.authChecking = true;
+        authStatusProc.running = true;
+    }
+
+    function openAuthDialog() {
+        root.authOpen = true;
+        root.authMessage = "";
+        root.authMessageOk = false;
+        root.authMessageError = false;
+        root.checkAuth();
+    }
+
+    function saveAuthKey(key) {
+        if (root.authSaving) return;
+        root.authMessage = "";
+        root.authMessageOk = false;
+        root.authMessageError = false;
+        root.authSaving = true;
+        authLogin.pendingKey = String(key || "");
+        authLogin.stdinEnabled = true;
+        authLogin.running = true;
+    }
+
+    function applyAuthLogin(raw) {
+        const res = root.parseAuthResponse(raw);
+        if (!res) {
+            root.authMessage = "No response from opencode.";
+            root.authMessageError = true;
+            return;
+        }
+        if (!res.ok) {
+            root.authMessage = res.error || "Could not save the key.";
+            root.authMessageError = true;
+            return;
+        }
+        root.authStatus = res.connected ? "connected" : "missing";
+        root.authDetail = (res.methods || []).join(", ");
+        if (root.stateLoaded) root.saveState();
+        if (res.connected) {
+            root.authMessage = "Key saved.";
+            root.authMessageOk = true;
+            if (authDialog) authDialog.clearKey();
+        } else {
+            root.authMessage = "opencode did not keep the key.";
+            root.authMessageError = true;
+        }
+    }
+
+    function startTerminalLogin() {
+        if (terminalAuth.running) return;
+        root.authMessage = "Finish the login in the terminal that just opened.";
+        root.authMessageOk = false;
+        root.authMessageError = false;
+        terminalAuth.running = true;
     }
 
     Process {
@@ -420,6 +553,66 @@ ShellRoot {
             }
         }
     }
+
+    // ---------------- opencode account (status, key, terminal login) ----------------
+    Process {
+        id: authStatusProc
+        running: false
+        command: ["python3", root.authScript, "--bin", root.opencodeBin, "status", root.authProvider]
+        stdout: StdioCollector {
+            onStreamFinished: root.applyAuthStatus(text)
+        }
+        stderr: StdioCollector {}
+        onExited: (code, status) => { root.authChecking = false; }
+    }
+
+    Process {
+        id: authLogin
+        property string pendingKey: ""
+        running: false
+        stdinEnabled: true
+        command: ["python3", root.authScript, "--bin", root.opencodeBin, "login", root.authProvider]
+        stdout: StdioCollector {
+            onStreamFinished: root.applyAuthLogin(text)
+        }
+        stderr: StdioCollector {}
+        onStarted: {
+            authLogin.write(authLogin.pendingKey + "\n");
+            authLogin.pendingKey = "";
+            authLogin.stdinEnabled = false;
+        }
+        onExited: (code, status) => { root.authSaving = false; }
+    }
+
+    Process {
+        id: terminalAuth
+        running: false
+        command: ["sh", "-c", root.terminalLauncher, root.opencodeBin, root.authProvider]
+        stdout: SplitParser {
+            onRead: line => console.log("[frieren-auth]", line)
+        }
+        stderr: SplitParser {
+            onRead: line => console.log("[frieren-auth]", line)
+        }
+        onExited: (code, status) => {
+            if (code === 127) {
+                root.authMessage = "No terminal emulator found. Run: "
+                    + root.opencodeBin + " auth login " + root.authProvider;
+                root.authMessageError = true;
+            } else {
+                root.checkAuth();
+            }
+        }
+    }
+
+    Timer {
+        interval: 4000
+        repeat: true
+        running: root.authOpen && !root.authSaving
+        onTriggered: root.checkAuth()
+    }
+
+    Component.onCompleted: root.checkAuth()
 
     // ---------------- tray helper (StatusNotifierItem + DBusMenu) ----------------
     Process {
@@ -462,6 +655,8 @@ ShellRoot {
         function stop(): void { root.stopAgent() }
 
         function hide(): void { root.chatOpen = false }
+
+        function auth(): void { root.openAuthDialog() }
 
         function ping(): string { return "pong" }
 
@@ -614,11 +809,67 @@ ShellRoot {
             model: chat
             busy: root.busy
             hasSession: root.sessionId.length > 0
+            authMissing: root.authMissing
 
             onSubmit: text => root.send(text)
             onStop: root.stopAgent()
             onFresh: root.freshSession()
             onDismiss: root.chatOpen = false
+            onConfigureAuth: root.openAuthDialog()
+        }
+    }
+
+    // ---------------- opencode account dialog ----------------
+    PanelWindow {
+        id: authWin
+
+        visible: root.authOpen
+        screen: petWin.screen
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.namespace: "frieren-auth"
+        WlrLayershell.keyboardFocus: root.authOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        focusable: true
+
+        anchors {
+            top: true
+            left: true
+            right: true
+            bottom: true
+        }
+
+        implicitWidth: authWin.screen ? authWin.screen.width : 1920
+        implicitHeight: authWin.screen ? authWin.screen.height : 1080
+
+        mask: Region { item: authDialog }
+
+        onVisibleChanged: {
+            if (visible) Qt.callLater(authDialog.focusKey);
+        }
+
+        AuthDialog {
+            id: authDialog
+            visible: authWin.visible
+            anchors.centerIn: parent
+            width: implicitWidth
+            height: implicitHeight
+
+            theme: theme
+            provider: root.authProvider
+            model: root.modelName
+            status: root.authStatus
+            detail: root.authDetail
+            message: root.authMessage
+            messageOk: root.authMessageOk
+            messageError: root.authMessageError
+            checking: root.authChecking
+            busy: root.authSaving
+
+            onSaveKey: key => root.saveAuthKey(key)
+            onTerminalLogin: root.startTerminalLogin()
+            onCheck: root.checkAuth()
+            onClose: root.authOpen = false
         }
     }
 }

@@ -41,6 +41,7 @@ skills cannot know.
 | Pet behavior, timers, new pose | `components/PetSprite.qml`, `assets/poses/poses.json`, `assets/poses/*.png` |
 | Chat UI | `components/ChatPanel.qml`, `components/MessageBubble.qml` |
 | Backend, events, sessions | `shell.qml` (`send`, `handleLine`, `upsertTool`, `Process agent`) |
+| OpenCode account | `shell.qml` (auth properties and processes), `auth.py`, `components/AuthDialog.qml`, `tray.py` |
 | State or settings | `shell.qml` (`loadState`, `saveState`, `statePath`), `tray.py` |
 | Tray menu | `tray.py`, `.opencode/skills/frieren-pet/references/state-tray-ipc.md` |
 | IPC | `shell.qml` (`IpcHandler`), `quickshell/frieren/README.md` |
@@ -65,8 +66,8 @@ skills cannot know.
 
 1. Add a function under `IpcHandler` in `shell.qml`.
 2. Keep the name short. Existing methods: `toggle`, `ask`, `fresh`, `stop`,
-   `hide`, `ping`, `minimize`, `restore`, `wander`, `sleep`, `blink`, `scale`,
-   `resetpos`, `quit`.
+   `hide`, `auth`, `ping`, `minimize`, `restore`, `wander`, `sleep`, `blink`,
+   `scale`, `resetpos`, `quit`.
 3. Document it in `quickshell/frieren/README.md` and in `references/state-tray-ipc.md`.
 4. Test with `qs -c frieren ipc call frieren <method>`.
 
@@ -115,3 +116,8 @@ Manual checklist and failure diagnosis: `references/verification.md`.
 - The pet window uses a transparent fullscreen overlay plus a mask. Never
   remove `mask: Region { item: hitArea }` or the whole desktop stops receiving
   clicks.
+- The account check runs at startup and can finish before `state.json` loads.
+  Do not save state from the auth path until `stateLoaded` is true or the
+  session and position get overwritten with defaults.
+- `auth.py` reads the key from stdin and never writes it to argv or to its
+  output. Keep it that way when changing the login flow.

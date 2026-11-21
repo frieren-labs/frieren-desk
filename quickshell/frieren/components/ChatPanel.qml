@@ -9,11 +9,13 @@ Item {
     property alias model: list.model
     property bool busy: false
     property bool hasSession: false
+    property bool authMissing: false
 
     signal submit(string text)
     signal stop()
     signal fresh()
     signal dismiss()
+    signal configureAuth()
 
     readonly property string fontFamily: theme ? theme.fontFamily : "sans-serif"
     readonly property color fg: theme ? theme.text : "#e6e0e9"
@@ -22,6 +24,7 @@ Item {
     readonly property color surface: theme ? theme.surface : "#211f24"
     readonly property color surfaceHigh: theme ? theme.surfaceHigh : "#2b292f"
     readonly property color line: theme ? theme.outline : "#49454e"
+    readonly property color danger: theme ? theme.danger : "#f2b8b5"
 
     Rectangle {
         anchors.fill: parent
@@ -101,11 +104,55 @@ Item {
                 }
             }
 
+            // ---------- opencode account banner ----------
+            Rectangle {
+                id: authBanner
+                visible: panel.authMissing
+                width: parent.width
+                height: 38
+                radius: 10
+                color: surfaceHigh
+                border.color: danger
+                border.width: 1
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.right: connectLabel.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "OpenCode is not connected."
+                    color: fg
+                    font.family: fontFamily
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+
+                Text {
+                    id: connectLabel
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Connect"
+                    color: accent
+                    font.family: fontFamily
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: panel.configureAuth()
+                }
+            }
+
             // ---------- messages ----------
             ListView {
                 id: list
                 width: parent.width
                 height: parent.height - 34 - 10 - inputBox.height - 10
+                    - (authBanner.visible ? authBanner.height + 10 : 0)
                 clip: true
                 spacing: 12
                 boundsBehavior: Flickable.StopAtBounds

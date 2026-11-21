@@ -17,6 +17,7 @@ place with `sh -c`, so readers never see a partial file.
 | `sleep` | bool | tray, IPC | startup, tray | Sleep when idle |
 | `blink` | bool | tray, IPC | startup, tray | Blinking |
 | `scale` | number | tray, IPC | startup, tray | 0.7 to 1.4 |
+| `auth` | bool | auth check | tray | opencode account connected |
 | `busy` | bool | busy changes | none | Snapshot for debugging |
 | `chatOpen` | bool | chat changes | none | Snapshot for debugging |
 
@@ -31,13 +32,19 @@ written. The scale handler and `resetpos` follow this order.
 Adding a setting requires all of: a `property` in `shell.qml`, a read in
 `loadState`, a write in `saveState`, an entry in `tray.py`, and docs.
 
+`auth` is different: it is runtime status, not a user setting. The account check
+writes it, the tray reads it for the menu label, and `stateLoaded` gates the
+first save. Without that gate, a fast auth check can write defaults over the
+loaded session and position.
+
 ## Tray helper
 
 `tray.py` registers `org.kde.StatusNotifierItem-frieren` with the
 StatusNotifierWatcher and exposes `com.canonical.dbusmenu` at `/MenuBar`.
 
-It reads state on every layout request and polls the state file mtime every
-500 ms. On change it emits `LayoutUpdated` and `ItemsPropertiesUpdated`.
+It reads state on every layout request and watches the state file with a Gio
+file monitor (a 500 ms mtime poll is the fallback). On change it emits
+`LayoutUpdated` and `ItemsPropertiesUpdated`.
 It writes nothing itself: every action calls `qs -c frieren ipc call frieren`.
 
 ### Menu IDs
@@ -60,9 +67,10 @@ It writes nothing itself: every action calls `qs -c frieren ipc call frieren`.
 | 14 | Reset position | `resetpos` |
 | 15 | Separator | none |
 | 16 | Quit | `quit` |
+| 17 | OpenCode account / Connect OpenCode account... | `auth` |
 
-Keep IDs stable. `notify_state()` sends updates only for IDs 1, 2, 4, 7, 8, 9 and
-11 to 13. Add new toggle or radio IDs to that list.
+Keep IDs stable. `notify_state()` sends updates only for IDs 1, 2, 4, 7, 8, 9,
+11 to 13 and 17. Add new toggle or radio IDs to that list.
 
 ### Toggle type rules
 
@@ -86,8 +94,10 @@ change after clicking:
 
 ### Helper lifecycle
 
-`shell.qml` starts the helper as a `Process`. It exits by itself when the
-Frieren IPC stops answering, which avoids orphan icons after a shell restart.
+`shell.qml` starts the helper as a `Process`, so `qs` is its parent. The helper
+calls `prctl(PR_SET_PDEATHSIG, SIGTERM)`, which makes the kernel terminate it
+when `qs` dies. That avoids orphan icons without polling the IPC, and it also
+covers a crash or a kill -9 of the shell.
 If it crashes, the QML process does not restart it automatically. Reload the
 shell or start the helper manually for now.
 
@@ -116,6 +126,7 @@ The handler target is `frieren`.
 | `fresh` | none | New conversation |
 | `stop` | none | Stop the current run |
 | `hide` | none | Close the chat |
+| `auth` | none | Open the OpenCode account dialog |
 | `ping` | none | Return `pong` |
 | `minimize` | none | Hide the pet to the tray |
 | `restore` | none | Show the pet |
@@ -153,3 +164,5 @@ qs -c frieren ipc call frieren sleep toggle
   for the command line.
 - `saveState()` passes the JSON payload as `$1`, not interpolated into the
   script, so quotes and newlines are safe.
+- The account key reaches `auth.py` over stdin, then `opencode auth import` over
+  its stdin. It must never appear in argv, `ps`, the state file or the logs.
