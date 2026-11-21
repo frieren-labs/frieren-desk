@@ -26,7 +26,7 @@ Item {
         width: parent.width
         spacing: 8
 
-        // ---- mensaje del usuario ----
+        // ---- user message ----
         Rectangle {
             visible: root.role === "user"
             x: col.width - width
@@ -49,7 +49,7 @@ Item {
             }
         }
 
-        // ---- respuesta de Frieren ----
+        // ---- Frieren's reply ----
         Text {
             visible: root.role === "assistant" && root.text.length > 0
             width: col.width
@@ -62,7 +62,7 @@ Item {
             lineHeight: 1.25
         }
 
-        // ---- accion ejecutada (bitacora) ----
+        // ---- executed action (log) ----
         Rectangle {
             visible: root.role === "tool"
             width: col.width
@@ -93,7 +93,7 @@ Item {
                     }
 
                     Text {
-                        text: root.command.length > 0 ? root.command : (root.text.length > 0 ? root.text : "acción")
+                        text: root.command.length > 0 ? root.command : (root.text.length > 0 ? root.text : "action")
                         width: toolCol.width - 20
                         color: root.fgDim
                         elide: Text.ElideRight
@@ -121,7 +121,7 @@ Item {
             }
         }
 
-        // ---- avisos del sistema ----
+        // ---- system notices ----
         Text {
             visible: root.role === "system"
             width: col.width

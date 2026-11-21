@@ -10,44 +10,50 @@ FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
 
 command -v qs >/dev/null 2>&1 || {
-  echo "error: falta quickshell (paquete: quickshell, binario: qs)" >&2
+  echo "error: quickshell is missing (package: quickshell, binary: qs)" >&2
   exit 1
 }
 
 command -v opencode >/dev/null 2>&1 || \
-  echo "aviso: opencode no está en PATH. La mascota abre, pero el chat no va a responder." >&2
+  echo "warning: opencode is not in PATH. The pet opens, but chat will not respond." >&2
+
+command -v python3 >/dev/null 2>&1 || \
+  echo "warning: python3 is missing. The tray icon will not start." >&2
+
+python3 -c "import dbus, gi" >/dev/null 2>&1 || \
+  echo "warning: install python-dbus and python-gobject to get the tray icon." >&2
 
 mkdir -p "$QS_DIR" "$OC_DIR"
 cp -R "$ROOT/quickshell/frieren/." "$QS_DIR/"
 
 if [ -e "$OC_DIR/frieren.md" ] && [ "$FORCE" -ne 1 ]; then
-  echo "aviso: ya existe $OC_DIR/frieren.md, no lo piso (usá --force)" >&2
+  echo "warning: $OC_DIR/frieren.md already exists, not overwriting it (use --force)" >&2
 else
   cp "$ROOT/opencode/agents/frieren.md" "$OC_DIR/frieren.md"
 fi
 
 cat <<'EOF'
 
-Instalado. Falta engancharlo al compositor.
+Installed. You still need to hook it into the compositor.
 
-DankMaterialShell (tu caso): agregá el bind a ~/.config/hypr/dms/binds-user.lua
+DankMaterialShell: add the bind to ~/.config/hypr/dms/binds-user.lua
 
   hl.bind("SUPER + SHIFT + R", hl.dsp.exec_cmd("qs -c frieren ipc call frieren toggle"))
 
-Hyprland con config propia: copiá hypr/frieren.lua a ~/.config/hypr/ y agregá
-require("frieren") al final de hyprland.lua.
+Hyprland with your own config: copy hypr/frieren.lua to ~/.config/hypr/ and add
+require("frieren") at the end of hyprland.lua.
 
-Para que arranque solo en cada login, sumá al mismo archivo:
+To start it automatically on every login, add this to the same file:
 
   hl.on("hyprland.start", function()
       hl.exec_cmd("qs -c frieren -n")
   end)
 
-Probarlo ahora:
+Try it now:
 
   qs -c frieren -d
   qs -c frieren ipc call frieren toggle
 
-Antes de usarlo, revisá el modelo en opencode/agents/frieren.md y en
-quickshell/frieren/shell.qml (modelName): tiene que ser uno que tu cuenta pueda pagar.
+Before using it, check the model in opencode/agents/frieren.md and in
+quickshell/frieren/shell.qml (modelName): it must be one your account can pay for.
 EOF
