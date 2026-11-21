@@ -27,7 +27,11 @@ imports in this project, so treat its output as a hint and not a gate.
 ```
 
 `health.sh` checks IPC, state file and tray process. `restart.sh` asks the
-running shell to quit through IPC, waits, and starts it again in daemon mode.
+running shell to quit through IPC, waits, terminates any stale `qs` instance for
+this config by exact argv, and starts one instance with `-n` in daemon mode.
+Do not replace it with a bare `qs -c frieren -d`: `quit` only stops the instance
+that answers IPC, and duplicate instances share one state file and fight over
+the pet position.
 
 After changing `tray.py`, also restart the helper. A shell restart does it. To
 restart only the helper, kill the `tray.py` process and start it manually using
