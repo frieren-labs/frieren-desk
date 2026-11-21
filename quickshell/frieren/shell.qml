@@ -113,6 +113,10 @@ ShellRoot {
     }
 
     function loadState(raw) {
+        // Changing petScale below triggers onPetScaleChanged. Mark the pet as
+        // unplaced first so that handler does not save the stale default
+        // position before the loaded position is applied.
+        root.petPlaced = false;
         try {
             const doc = JSON.parse(raw);
             if (typeof doc.x === "number") root.petX = doc.x;
@@ -133,7 +137,6 @@ ShellRoot {
             root.lastGoodY = 220;
         }
 
-        root.petPlaced = false;
         root.placePet();
     }
 
@@ -213,9 +216,15 @@ ShellRoot {
     onBusyChanged: root.saveState()
     onChatOpenChanged: root.saveState()
     onPetScaleChanged: {
+        if (!root.petPlaced) return;
+        // placePet() works from petX/petY, so capture the live position first.
+        if (pet) {
+            root.petX = pet.x;
+            root.petY = pet.y;
+        }
         root.petPlaced = false;
-        Qt.callLater(root.placePet);
-        root.saveState();
+        root.placePet();
+        if (root.petPlaced) root.saveState();
     }
 
     // ---------------- conversation ----------------
@@ -488,8 +497,8 @@ ShellRoot {
             root.petX = 80;
             root.petY = 220;
             root.petPlaced = false;
-            Qt.callLater(root.placePet);
-            root.saveState();
+            root.placePet();
+            if (root.petPlaced) root.saveState();
         }
 
         function quit(): void { Qt.quit() }
