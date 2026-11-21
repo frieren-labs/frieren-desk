@@ -124,6 +124,9 @@ Missing fields fall back to the `idle` pose metadata, then to hardcoded defaults
 python3 tools/slice_spritesheet.py assets/frieren-sheet.png
 ```
 
+Development only: the installed app does not need Python. This script rebuilds
+the checked-in pose assets.
+
 It keys out magenta with a soft alpha and despill, crops each cell, scales all
 poses by the same factor, anchors by the face, grounds the feet, writes six
 228x256 PNGs, generates `poses.json`, and renders `preview.png`.

@@ -174,16 +174,8 @@ Autostart: a block at the end of `~/.config/hypr/hyprland.lua`
 ## Stop / restart
 
 ```bash
-python3 - <<'EOF'
-import os, glob, signal
-for p in glob.glob('/proc/[0-9]*/cmdline'):
-    try:
-        a = [x.decode() for x in open(p,'rb').read().split(b'\0') if x]
-    except OSError:
-        continue
-    if len(a) >= 3 and a[0].endswith('/qs') and a[1:3] == ['-c','frieren']:
-        os.kill(int(p.split('/')[2]), signal.SIGTERM)
-EOF
+ps -eo pid=,args= | awk '$2 ~ /(^|\/)qs$/ && $3 == "-c" && $4 == "frieren" { print $1 }' \
+  | while read -r pid; do kill "$pid"; done
 
 qs -c frieren            # foreground, logs on stderr
 qs -c frieren -d         # daemon
