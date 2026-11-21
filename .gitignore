@@ -1,2 +1,5 @@
 *.qslog
 *.log
+
+__pycache__/
+*.pyc

@@ -52,7 +52,7 @@ Item {
                     Image {
                         width: 30
                         height: 30
-                        source: "file://" + (Quickshell.env("HOME") || "") + "/.config/quickshell/frieren/assets/frieren-chibi.png"
+                        source: "file://" + (Quickshell.env("HOME") || "") + "/.config/quickshell/frieren/assets/frieren-icon.png"
                         fillMode: Image.PreserveAspectFit
                         smooth: false
                         sourceSize: Qt.size(60, 60)
@@ -71,7 +71,7 @@ Item {
                         }
 
                         Text {
-                            text: panel.busy ? "pensando…" : (panel.hasSession ? "conversación activa" : "nueva conversación")
+                            text: panel.busy ? "thinking…" : (panel.hasSession ? "active conversation" : "new conversation")
                             color: panel.busy ? accent : fgDim
                             opacity: 0.85
                             font.family: fontFamily
@@ -88,20 +88,20 @@ Item {
                     IconButton {
                         theme: panel.theme
                         glyph: "+"
-                        tooltip: "Nueva conversación"
+                        tooltip: "New conversation"
                         onActivated: panel.fresh()
                     }
 
                     IconButton {
                         theme: panel.theme
                         glyph: "✕"
-                        tooltip: "Cerrar"
+                        tooltip: "Close"
                         onActivated: panel.dismiss()
                     }
                 }
             }
 
-            // ---------- mensajes ----------
+            // ---------- messages ----------
             ListView {
                 id: list
                 width: parent.width
@@ -151,7 +151,7 @@ Item {
                     Text {
                         anchors.fill: parent
                         visible: input.text.length === 0
-                        text: panel.busy ? "esperá a que termine o detené…" : "pedime algo del sistema…"
+                        text: panel.busy ? "wait for it to finish or stop it…" : "ask me something about the system…"
                         color: fgDim
                         opacity: 0.6
                         font: input.font
@@ -207,7 +207,7 @@ Item {
     onVisibleChanged: if (visible) Qt.callLater(input.forceActiveFocus)
     Component.onCompleted: Qt.callLater(input.forceActiveFocus)
 
-    // ---------- boton chico reutilizable ----------
+    // ---------- reusable small button ----------
     component IconButton: Rectangle {
         id: btn
 

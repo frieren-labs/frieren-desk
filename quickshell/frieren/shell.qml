@@ -14,13 +14,24 @@ ShellRoot {
 
     property bool chatOpen: false
     property bool busy: false
+    property bool toolActive: false
+    property bool stopping: false
     property int toolCount: 0
     property bool hasError: false
 
-    // partID -> indice en el ListModel
+    // settings (persisted in state.json and exposed by the tray menu)
+    property bool minimized: false
+    property bool wanderEnabled: true
+    property bool sleepEnabled: true
+    property bool blinkEnabled: true
+    property real petScale: 1.0
+    property real lastGoodX: 80
+    property real lastGoodY: 220
+
+    // partID -> index in the ListModel
     property var partIndex: ({})
 
-    // ---------------- tema (matugen/DMS, con fallback) ----------------
+    // ---------------- theme (matugen/DMS, with fallback) ----------------
     QtObject {
         id: theme
 
@@ -69,7 +80,7 @@ ShellRoot {
             if (c.outline_variant) theme.outline = c.outline_variant;
             if (c.error) theme.danger = c.error;
         } catch (e) {
-            // dejamos el fallback
+            // keep the fallback
         }
     }
 
@@ -81,7 +92,7 @@ ShellRoot {
         } catch (e) {}
     }
 
-    // ---------------- estado persistente (archivo propio) ----------------
+    // ---------------- persistent state (own file) ----------------
     readonly property string stateDir: home + "/.local/state/frieren"
     readonly property string statePath: stateDir + "/state.json"
 
@@ -107,7 +118,21 @@ ShellRoot {
             if (typeof doc.x === "number") root.petX = doc.x;
             if (typeof doc.y === "number") root.petY = doc.y;
             if (typeof doc.session === "string") root.sessionId = doc.session;
+            if (typeof doc.minimized === "boolean") root.minimized = doc.minimized;
+            if (typeof doc.wander === "boolean") root.wanderEnabled = doc.wander;
+            if (typeof doc.sleep === "boolean") root.sleepEnabled = doc.sleep;
+            if (typeof doc.blink === "boolean") root.blinkEnabled = doc.blink;
+            if (typeof doc.scale === "number")
+                root.petScale = Math.max(0.7, Math.min(1.4, doc.scale));
         } catch (e) {}
+
+        root.lastGoodX = root.petX;
+        root.lastGoodY = root.petY;
+        if (root.petY < 60) {
+            root.lastGoodX = 80;
+            root.lastGoodY = 220;
+        }
+
         root.petPlaced = false;
         root.placePet();
     }
@@ -120,8 +145,8 @@ ShellRoot {
         pet.y = Math.max(0, Math.min(pet.y, petWin.height - pet.height));
     }
 
-    // La superficie arranca en 500x500 y recien despues toma el tamano real:
-    // no se puede clampear contra ese tamano provisorio.
+    // The surface starts at 500x500 and only later gets its real size:
+    // clamping against that provisional size would be wrong.
     function placePet() {
         if (!pet || root.petPlaced) return;
         const sw = petWin.screen ? petWin.screen.width : 0;
@@ -134,19 +159,66 @@ ShellRoot {
 
     function saveState() {
         const payload = JSON.stringify({
-            x: Math.round(pet ? pet.x : root.petX),
-            y: Math.round(pet ? pet.y : root.petY),
-            session: root.sessionId
+            x: Math.round(root.minimized ? root.petX : (pet ? pet.x : root.petX)),
+            y: Math.round(root.minimized ? root.petY : (pet ? pet.y : root.petY)),
+            session: root.sessionId,
+            minimized: root.minimized,
+            wander: root.wanderEnabled,
+            sleep: root.sleepEnabled,
+            blink: root.blinkEnabled,
+            scale: root.petScale,
+            busy: root.busy,
+            chatOpen: root.chatOpen
         });
         stateWriter.command = [
             "sh", "-c",
-            'mkdir -p "$0" && printf %s "$1" > "$0/state.json"',
+            'mkdir -p "$0" && printf %s "$1" > "$0/state.json.tmp" && mv "$0/state.json.tmp" "$0/state.json"',
             root.stateDir, payload
         ];
         stateWriter.running = true;
     }
 
-    // ---------------- conversacion ----------------
+    function isNearBar() {
+        if (!pet || petWin.height <= 0) return false;
+        const bar = 44;
+        return pet.y <= bar || pet.y + pet.height >= petWin.height - bar;
+    }
+
+    function minimizePet() {
+        if (root.minimized) return;
+        if (root.isNearBar()) {
+            root.petX = root.lastGoodX;
+            root.petY = root.lastGoodY;
+        } else {
+            root.petX = pet ? pet.x : root.petX;
+            root.petY = pet ? pet.y : root.petY;
+        }
+        if (pet) {
+            pet.x = root.petX;
+            pet.y = root.petY;
+        }
+        root.minimized = true;
+        root.chatOpen = false;
+        root.saveState();
+    }
+
+    function restorePet() {
+        root.minimized = false;
+        root.petPlaced = false;
+        root.placePet();
+        root.saveState();
+        if (pet) pet.wake();
+    }
+
+    onBusyChanged: root.saveState()
+    onChatOpenChanged: root.saveState()
+    onPetScaleChanged: {
+        root.petPlaced = false;
+        Qt.callLater(root.placePet);
+        root.saveState();
+    }
+
+    // ---------------- conversation ----------------
     ListModel {
         id: chat
     }
@@ -180,7 +252,7 @@ ShellRoot {
     function upsertTool(part) {
         const state = part.state || {};
         const input = state.input || {};
-        const detail = input.command || input.filePath || input.description || input.query || part.tool || "acción";
+        const detail = input.command || input.filePath || input.description || input.query || part.tool || "action";
         const out = state.output || state.error || "";
         const status = state.status || "running";
         const props = {
@@ -195,20 +267,26 @@ ShellRoot {
             partIndex[part.id] = idx;
         }
         updateMessage(idx, props);
+        // A finished tool stops the cast pose. A failed tool also makes the
+        // pet sad: opencode still exits 0, so onExited never sees the error.
+        toolActive = status === "running" || status === "pending";
         if (status === "completed") toolCount = toolCount + 1;
+        else if (status === "error") pet.react("error");
     }
 
     function showError(err) {
         hasError = true;
-        let msg = "Error desconocido";
+        toolActive = false;
+        let msg = "Unknown error";
         if (err) {
             if (typeof err === "string") msg = err;
             else msg = err.message || err.type || JSON.stringify(err);
         }
-        // Los errores de cuota vienen con un JSON enorme adentro
+        // Quota errors come with a huge JSON blob inside
         const brace = msg.indexOf("{");
         if (msg.length > 220 && brace > 0) msg = msg.slice(0, brace).trim();
         addMessage("system", "⚠ " + msg);
+        pet.react("error");
     }
 
     function handleLine(line) {
@@ -233,13 +311,16 @@ ShellRoot {
     function send(text) {
         text = String(text || "").trim();
         if (text.length === 0) return;
+        if (root.minimized) root.restorePet();
         if (busy) {
-            addMessage("system", "Todavía estoy con lo anterior. Esperá o tocá el botón de detener.");
+            addMessage("system", "I'm still working on the previous request. Wait or press the stop button.");
             return;
         }
 
         addMessage("user", text);
         busy = true;
+        toolActive = false;
+        stopping = false;
         hasError = false;
         toolCount = 0;
         partIndex = ({});
@@ -248,32 +329,47 @@ ShellRoot {
         if (root.sessionId) args.push("--session", root.sessionId);
         args.push(text);
 
-        // stdin cerrado: si opencode ve un pipe abierto espera EOF y se cuelga
+        pet.wake();
+
+        // stdin closed: if opencode sees an open pipe it waits for EOF and hangs
         agent.command = ["sh", "-c", 'exec "$0" "$@" < /dev/null', opencodeBin].concat(args);
         agent.running = true;
     }
 
     function stopAgent() {
-        if (agent.running) agent.running = false;
+        if (agent.running) {
+            stopping = true;
+            agent.running = false;
+        }
         busy = false;
-        addMessage("system", "Detenida.");
+        toolActive = false;
+        addMessage("system", "Stopped.");
     }
 
     function freshSession() {
+        if (root.minimized) root.restorePet();
         if (busy) stopAgent();
         root.sessionId = "";
         root.saveState();
         chat.clear();
         partIndex = ({});
         toolCount = 0;
+        toolActive = false;
         hasError = false;
-        addMessage("assistant", "Listo, empezamos de cero. ¿Qué necesitás?");
+        pet.wake();
+        addMessage("assistant", "Done, starting from scratch. What do you need?");
     }
 
     function toggleChat() {
-        chatOpen = !chatOpen;
+        if (root.minimized) {
+            root.restorePet();
+            chatOpen = true;
+        } else {
+            chatOpen = !chatOpen;
+        }
+        if (chatOpen) pet.wake();
         if (chatOpen && chat.count === 0) {
-            addMessage("assistant", "Hola. Soy Frieren. Pedime algo del sistema y lo hago, o preguntame lo que quieras.");
+            addMessage("assistant", "Hi. I'm Frieren. Ask me to do something on the system, or ask me anything.");
         }
     }
 
@@ -302,13 +398,46 @@ ShellRoot {
 
         onExited: (code, status) => {
             root.busy = false;
-            if (code !== 0 && !root.hasError && code !== 130) {
-                root.addMessage("system", "opencode terminó con código " + code + ".");
+            root.toolActive = false;
+            if (root.stopping) {
+                root.stopping = false;
+                return;
+            }
+            if (code === 0) {
+                pet.react("ok");
+            } else if (!root.hasError && code !== 130) {
+                pet.react("error");
+                root.addMessage("system", "opencode exited with code " + code + ".");
             }
         }
     }
 
-    // ---------------- control externo (keybinds, scripts) ----------------
+    // ---------------- tray helper (StatusNotifierItem + DBusMenu) ----------------
+    Process {
+        id: trayHelper
+        running: true
+        stdinEnabled: false
+        command: [
+            "python3",
+            root.home + "/.config/quickshell/frieren/tray.py",
+            root.home + "/.config/quickshell/frieren/assets/frieren-icon.png",
+            root.home + "/.config/quickshell/frieren/assets/frieren-icon-128.argb",
+            root.home + "/.config/quickshell/frieren/assets/frieren-icon-64.argb",
+            root.home + "/.config/quickshell/frieren/assets/frieren-icon-32.argb",
+            root.statePath
+        ]
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: line => console.log("[frieren-tray]", line)
+        }
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: line => console.log("[frieren-tray]", line)
+        }
+        onExited: (code, status) => console.log("[frieren] tray helper exited with", code)
+    }
+
+    // ---------------- external control (keybinds, scripts) ----------------
     IpcHandler {
         target: "frieren"
 
@@ -324,11 +453,53 @@ ShellRoot {
         function stop(): void { root.stopAgent() }
 
         function hide(): void { root.chatOpen = false }
+
+        function ping(): string { return "pong" }
+
+        function minimize(): void { root.minimizePet() }
+
+        function restore(): void { root.restorePet() }
+
+        function wander(mode: string): void {
+            root.wanderEnabled = (mode === "toggle") ? !root.wanderEnabled : (mode === "true");
+            root.saveState();
+        }
+
+        function sleep(mode: string): void {
+            root.sleepEnabled = (mode === "toggle") ? !root.sleepEnabled : (mode === "true");
+            if (!root.sleepEnabled && pet) pet.wake();
+            root.saveState();
+        }
+
+        function blink(mode: string): void {
+            root.blinkEnabled = (mode === "toggle") ? !root.blinkEnabled : (mode === "true");
+            root.saveState();
+        }
+
+        function scale(value: string): void {
+            const v = parseFloat(value);
+            if (!isNaN(v)) {
+                root.petScale = Math.max(0.7, Math.min(1.4, v));
+                root.saveState();
+            }
+        }
+
+        function resetpos(): void {
+            root.petX = 80;
+            root.petY = 220;
+            root.petPlaced = false;
+            Qt.callLater(root.placePet);
+            root.saveState();
+        }
+
+        function quit(): void { Qt.quit() }
     }
 
-    // ---------------- ventana de la mascota (pantalla completa con mascara) ----------------
+    // ---------------- pet window (fullscreen with mask) ----------------
     PanelWindow {
         id: petWin
+
+        visible: !root.minimized
 
         anchors {
             top: true
@@ -362,18 +533,37 @@ ShellRoot {
         PetSprite {
             id: pet
             busy: root.busy
+            toolActive: root.toolActive
+            chatOpen: root.chatOpen
+            lookDir: chatWin.onLeft ? -1 : 1
+            wanderEnabled: root.wanderEnabled && !root.minimized
+            sleepEnabled: root.sleepEnabled
+            blinkEnabled: root.blinkEnabled
+            uiScale: root.petScale
+            accent: theme.accent
+            danger: theme.danger
+            textDim: theme.textDim
+            surface: theme.surface
+            outline: theme.outline
             onActivate: root.toggleChat()
-            onMoved: root.saveState()
+            onMoved: {
+                if (!root.isNearBar()) {
+                    root.lastGoodX = pet.x;
+                    root.lastGoodY = pet.y;
+                }
+                root.saveState();
+                if (root.isNearBar()) root.minimizePet();
+            }
 
             Component.onCompleted: Qt.callLater(root.placePet)
         }
     }
 
-    // ---------------- burbuja de chat ----------------
+    // ---------------- chat bubble ----------------
     PanelWindow {
         id: chatWin
 
-        visible: root.chatOpen
+        visible: root.chatOpen && !root.minimized
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
@@ -391,12 +581,14 @@ ShellRoot {
         margins.top: chatTop()
         margins.left: chatLeft()
 
+        readonly property bool onLeft: pet.x + pet.width + 14 + implicitWidth
+            > (petWin.width > 0 ? petWin.width : 1920) - 14
+
         function chatLeft() {
             const w = implicitWidth;
             const gap = 14;
             const sw = petWin.width > 0 ? petWin.width : 1920;
-            let x = pet.x + pet.width + gap;
-            if (x + w > sw - gap) x = pet.x - w - gap;
+            const x = onLeft ? pet.x - w - gap : pet.x + pet.width + gap;
             return Math.round(Math.max(gap, Math.min(x, sw - w - gap)));
         }
 
