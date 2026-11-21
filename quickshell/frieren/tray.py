@@ -155,11 +155,11 @@ class FrierenMenu(dbus.service.Object):
         add(ID_SEP_1, self._entry(kind="separator"))
         add(ID_SETTINGS, self._entry("Settings", kind="submenu", children_display="submenu"),
             [ID_WANDER, ID_SLEEP, ID_BLINK, ID_SIZE, ID_RESET])
-        add(ID_WANDER, self._entry("Wander", toggle_type="check",
+        add(ID_WANDER, self._entry("Wander", toggle_type="checkmark",
                                    toggle_state=1 if state["wander"] else 0))
-        add(ID_SLEEP, self._entry("Sleep when idle", toggle_type="check",
+        add(ID_SLEEP, self._entry("Sleep when idle", toggle_type="checkmark",
                                   toggle_state=1 if state["sleep"] else 0))
-        add(ID_BLINK, self._entry("Blink", toggle_type="check",
+        add(ID_BLINK, self._entry("Blink", toggle_type="checkmark",
                                   toggle_state=1 if state["blink"] else 0))
         add(ID_SIZE, self._entry("Size", kind="submenu", children_display="submenu"),
             [ID_SMALL, ID_MEDIUM, ID_LARGE])
