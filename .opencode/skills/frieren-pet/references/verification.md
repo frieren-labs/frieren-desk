@@ -6,8 +6,9 @@ reading the diff.
 ## Fast checks
 
 ```bash
-# Python helper syntax
-python3 -m py_compile quickshell/frieren/tray.py quickshell/frieren/auth.py
+# Native tray build
+cc -O2 -Wall -Wextra -o /tmp/frieren-tray quickshell/frieren/tray.c \
+  $(pkg-config --cflags --libs gio-2.0)
 
 # Shell scripts
 bash -n .opencode/skills/frieren-pet/scripts/*.sh
@@ -33,10 +34,10 @@ Do not replace it with a bare `qs -c frieren -d`: `quit` only stops the instance
 that answers IPC, and duplicate instances share one state file and fight over
 the pet position.
 
-After changing `tray.py`, also restart the helper. A shell restart does it. To
-restart only the helper, kill the `tray.py` process and start it manually using
-the command in `state-tray-ipc.md`. The QML process does not restart it on its
-own.
+After changing `tray.c`, rebuild with `install.sh` and restart the shell. A
+shell restart starts the new binary. To restart only the helper, kill the
+`frieren-tray` process and start it manually using the command in
+`state-tray-ipc.md`. The QML process does not restart it on its own.
 
 ## State and tray
 
@@ -51,7 +52,8 @@ and Blink, and `toggle-type: radio` for Size. `check` is a bug.
 The helper should be a child of `qs` and disappear within a second of
 `qs -c frieren ipc call frieren quit`. It should not spawn periodic `qs ...
 ping` children; idle CPU is zero and state changes arrive through the Gio file
-monitor.
+monitor. `frieren-tray` should sit at about 7 MB RSS; a much larger process
+means an old Python helper is still running.
 
 Toggle each item and confirm all three layers agree:
 
@@ -104,10 +106,10 @@ Toggle each item and confirm all three layers agree:
 
 ### Account
 
-- With credentials, the tray shows `Account...` and the dialog shows
+- With credentials, the tray shows `Account` and the dialog shows
   `Connected` with the method labels.
 - Without credentials (empty `XDG_DATA_HOME`, no `OPENCODE_API_KEY`), the tray
-  shows `Setup account...`, the chat shows the banner, and sending a
+  shows `Setup account`, the chat shows the banner, and sending a
   message opens the dialog instead of running opencode.
 - Saving a key clears the field, shows `Key saved.`, flips the status to
   `Connected`, removes the banner and writes `auth: true` to `state.json`.
@@ -124,7 +126,7 @@ Toggle each item and confirm all three layers agree:
 | No pet | `qs -c frieren` foreground logs, screen size, `placePet` |
 | Chat does not open | `toggle` IPC, `chatOpen`, monitor geometry |
 | Chat opens but no reply | `opencode` in PATH, auth, `opencode auth list`, stdin closed |
-| Account says not connected | `auth.py status opencode-go`, `opencode auth list`, env vars |
+| Account says not connected | `opencode auth list`, env vars, QML auth logs |
 | Key save fails | `opencode auth import`, `auth switch`, dialog message |
 | Tray label never changes | `auth` in `state.json`, `notify_state` includes ID 17 |
 | Pet stuck casting | `toolActive`, last tool status, late events |

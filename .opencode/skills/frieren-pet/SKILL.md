@@ -7,7 +7,7 @@ description: Work on the Frieren desktop pet in this repository. Use when changi
 
 A chibi Frieren desktop pet for Hyprland built on Quickshell. It talks to
 opencode through the `frieren` agent, runs system commands, animates six poses,
-and exposes a StatusNotifierItem tray menu written in Python.
+and exposes a StatusNotifierItem tray menu written in C.
 
 This skill is project-local. It encodes the invariants that the generic QML
 skills cannot know.
@@ -16,7 +16,7 @@ skills cannot know.
 
 1. `references/architecture.md` for the file map, windows and data flow.
 2. `references/poses-and-animation.md` before touching `PetSprite.qml`, poses or timers.
-3. `references/state-tray-ipc.md` before changing state, `tray.py` or IPC.
+3. `references/state-tray-ipc.md` before changing state, `tray.c` or IPC.
 4. `references/opencode-backend.md` before changing the process, events, sessions or agent files.
 5. `references/verification.md` before declaring a change done.
 
@@ -41,9 +41,9 @@ skills cannot know.
 | Pet behavior, timers, new pose | `components/PetSprite.qml`, `assets/poses/poses.json`, `assets/poses/*.png` |
 | Chat UI | `components/ChatPanel.qml`, `components/MessageBubble.qml` |
 | Backend, events, sessions | `shell.qml` (`send`, `handleLine`, `upsertTool`, `Process agent`) |
-| OpenCode account | `shell.qml` (auth properties and processes), `auth.py`, `components/AuthDialog.qml`, `tray.py` |
-| State or settings | `shell.qml` (`loadState`, `saveState`, `statePath`), `tray.py` |
-| Tray menu | `tray.py`, `.opencode/skills/frieren-pet/references/state-tray-ipc.md` |
+| OpenCode account | `shell.qml` (auth properties and processes), `components/AuthDialog.qml`, `tray.c` |
+| State or settings | `shell.qml` (`loadState`, `saveState`, `statePath`), `tray.c` |
+| Tray menu | `tray.c`, `.opencode/skills/frieren-pet/references/state-tray-ipc.md` |
 | IPC | `shell.qml` (`IpcHandler`), `quickshell/frieren/README.md` |
 | Theme | `shell.qml` (`theme`, `applyDmsColors`, `applyDmsType`) |
 | New pose art | `assets/frieren-sheet.png`, `tools/slice_spritesheet.py`, `README.md` |
@@ -55,8 +55,8 @@ skills cannot know.
 
 1. Add the property and default in `shell.qml`.
 2. Load and save it in `loadState` and `saveState`.
-3. Add an entry and a stable ID in `tray.py`, using `toggle_type="checkmark"`
-   for booleans and `toggle_type="radio"` for exclusive choices.
+3. Add an entry and a stable ID in `tray.c`, using the `checkmark` toggle type
+   for booleans and `radio` for exclusive choices.
 4. Add the action in `_activate`.
 5. Add an IPC method if scripts should change it.
 6. Update `quickshell/frieren/README.md`.
@@ -119,5 +119,9 @@ Manual checklist and failure diagnosis: `references/verification.md`.
 - The account check runs at startup and can finish before `state.json` loads.
   Do not save state from the auth path until `stateLoaded` is true or the
   session and position get overwritten with defaults.
-- `auth.py` reads the key from stdin and never writes it to argv or to its
-  output. Keep it that way when changing the login flow.
+- The account flow keeps the key in QML memory and sends it to
+  `opencode auth import` over stdin. It must never appear in argv, state.json or
+  the logs.
+- `tray.c` is the only tray helper and must stay on GIO/GDBus. `install.sh`
+  compiles it and fails if the compiler or the gio headers are missing; there is
+  no Python fallback.

@@ -30,7 +30,7 @@ After changing `root.petX` or `root.petY` programmatically, call
 written. The scale handler and `resetpos` follow this order.
 
 Adding a setting requires all of: a `property` in `shell.qml`, a read in
-`loadState`, a write in `saveState`, an entry in `tray.py`, and docs.
+`loadState`, a write in `saveState`, an entry in `tray.c`, and docs.
 
 `auth` is different: it is runtime status, not a user setting. The account check
 writes it, the tray reads it for the menu label, and `stateLoaded` gates the
@@ -39,8 +39,9 @@ loaded session and position.
 
 ## Tray helper
 
-`tray.py` registers `org.kde.StatusNotifierItem-frieren` with the
-StatusNotifierWatcher and exposes `com.canonical.dbusmenu` at `/MenuBar`.
+`tray.c`, compiled to `frieren-tray`, registers
+`org.kde.StatusNotifierItem-frieren` with the StatusNotifierWatcher and exposes
+`com.canonical.dbusmenu` at `/MenuBar`.
 
 It reads state on every layout request and watches the state file with a Gio
 file monitor (a 500 ms mtime poll is the fallback). On change it emits
@@ -67,7 +68,7 @@ It writes nothing itself: every action calls `qs -c frieren ipc call frieren`.
 | 14 | Reset position | `resetpos` |
 | 15 | Separator | none |
 | 16 | Quit | `quit` |
-| 17 | Account... / Setup account... | `auth` |
+| 17 | Account / Setup account | `auth` |
 
 Keep IDs stable. `notify_state()` sends updates only for IDs 1, 2, 4, 7, 8, 9,
 11 to 13 and 17. Add new toggle or radio IDs to that list.
@@ -83,7 +84,7 @@ Quickshell maps any other string to no indicator and logs
 `Unrecognized toggle type`. `"check"` is not valid, even though it looks
 reasonable. This repository used `"check"` once and the menu showed no boxes.
 
-`tray.py` sets `toggle-state` from `state.json`. If the checkmark does not
+`tray.c` sets `toggle-state` from `state.json`. If the checkmark does not
 change after clicking:
 
 1. Confirm the IPC call reaches the shell.
@@ -107,7 +108,7 @@ The fixed bus name makes a second helper exit with
 Manual start, matching `shell.qml`:
 
 ```bash
-python3 ~/.config/quickshell/frieren/tray.py \
+~/.config/quickshell/frieren/frieren-tray \
   ~/.config/quickshell/frieren/assets/frieren-icon.png \
   ~/.config/quickshell/frieren/assets/frieren-icon-128.argb \
   ~/.config/quickshell/frieren/assets/frieren-icon-64.argb \
@@ -149,20 +150,21 @@ qs -c frieren ipc call frieren sleep toggle
 
 1. Default in `shell.qml`.
 2. Load in `loadState`, save in `saveState`.
-3. Add to `DEFAULTS` and `read_state` in `tray.py`.
+3. Add the field to `State` defaults and `read_state` in `tray.c`.
 4. Add a menu entry with a stable ID and a valid `toggle-type`.
-5. Add to `notify_state()` if it can change at runtime.
-6. Add the action in `_activate`.
+5. Add it to the `dynamic_ids` list in `emit_state_changed`.
+6. Add the action in `activate`.
 7. Add an IPC method for script access.
 8. Update `quickshell/frieren/README.md`.
+9. Rebuild with `install.sh` and restart.
 
 ## Security notes
 
 - The IPC socket belongs to the user session. Any process of the same user can
   call `ask` and trigger the agent.
-- `tray.py` only passes fixed arguments to `qs`. Do not accept arbitrary text
+- `tray.c` only passes fixed arguments to `qs`. Do not accept arbitrary text
   for the command line.
 - `saveState()` passes the JSON payload as `$1`, not interpolated into the
   script, so quotes and newlines are safe.
-- The account key reaches `auth.py` over stdin, then `opencode auth import` over
+- The account key stays in QML memory and reaches `opencode auth import` over
   its stdin. It must never appear in argv, `ps`, the state file or the logs.

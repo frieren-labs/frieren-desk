@@ -8,7 +8,7 @@ change the system. She also has a real system tray icon with a settings menu.
 - App menu: open **Frieren** (or run `~/.local/bin/frieren`), installed by
   `install.sh`. It starts the pet and opens the chat when she is closed, or
   toggles the chat when she is running.
-- Account: tray icon → **Setup account...** when not connected, **Account...**
+- Account: tray icon → **Setup account** when not connected, **Account**
   when connected (see below). The chat shows a banner while the account is not
   connected.
 - Drag her with the mouse: the position is saved in
@@ -43,34 +43,35 @@ qs -c frieren ipc call frieren quit
 
 ## Tray menu
 
-`tray.py` registers a StatusNotifierItem with the watcher owned by the DMS bar
-and exposes a DBusMenu:
+`tray.c` is compiled to `frieren-tray` by `install.sh` and registers a
+StatusNotifierItem with the watcher owned by the DMS bar. It exposes a
+DBusMenu:
 
 - `Show / Hide pet`
 - `Open / Close chat`
 - `New conversation`
 - `Stop` (enabled while opencode is busy)
-- `Setup account...` when not connected, `Account...` when connected
+- `Setup account` when not connected, `Account` when connected
 - `Settings` → `Wander`, `Sleep when idle`, `Blink`, `Size` (small, medium,
   large), `Reset position`
 - `Quit`
 
-The helper needs `python3`, `python-dbus` and `python-gobject`. It starts with
-the shell and uses a fixed bus name so reloads do not duplicate the icon. State
-changes are watched with a Gio file monitor, and the helper takes a parent death
-signal, so it exits with the shell instead of polling its IPC.
+The helper uses only GIO/GDBus, starts with the shell, and uses a fixed bus name
+so reloads do not duplicate the icon. State changes are watched with a Gio file
+monitor, and the helper takes a parent death signal, so it exits with the shell
+instead of polling its IPC. It sits at about 7 MB RSS with zero idle CPU.
 
 ## OpenCode account
 
 A fresh install has no opencode credentials, so the first message would fail.
 The pet covers that setup:
 
-- Tray menu → **Setup account...** (or **Account...** when connected) opens the
+- Tray menu → **Setup account** (or **Account** when connected) opens the
   account dialog. The chat banner opens the same dialog.
 - **Save key**: paste the API key for the provider in `modelName`
-  (`opencode-go` by default). `auth.py` reads the key from stdin and runs
-  `opencode auth import` followed by `opencode auth switch`, with the label
-  `Frieren`. Repeated saves replace the previous Frieren credential.
+  (`opencode-go` by default). The dialog sends the key to `opencode auth import`
+  over stdin and then runs `opencode auth switch`, with the label `Frieren`.
+  Repeated saves replace the previous Frieren credential.
 - **Terminal login**: opens the first available terminal emulator
   (`xdg-terminal-exec`, foot, kitty, alacritty, ghostty, wezterm, konsole,
   gnome-terminal or xterm) and runs `opencode auth login <provider>`, which
@@ -123,8 +124,8 @@ exclamation bubble on error, floating `z`s while sleeping, and wandering.
 ```
 ~/.config/quickshell/frieren/
 ├── shell.qml                  # windows, opencode backend, state, IPC
-├── tray.py                    # StatusNotifierItem + DBusMenu helper
-├── auth.py                    # opencode account status and key import
+├── tray.c                     # native StatusNotifierItem + DBusMenu helper
+├── frieren-tray               # compiled by install.sh (not in git)
 ├── components/
 │   ├── PetSprite.qml          # poses, animation, drag
 │   ├── ChatPanel.qml          # chat bubble

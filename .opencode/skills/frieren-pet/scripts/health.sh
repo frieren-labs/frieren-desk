@@ -27,8 +27,17 @@ else
   fail=1
 fi
 
-if pgrep -f "frieren/tray.py" >/dev/null 2>&1; then
-  echo "tray: helper is running"
+tray_running=0
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if pgrep -f "frieren/frieren-tray" >/dev/null 2>&1; then
+    tray_running=1
+    break
+  fi
+  sleep 0.2
+done
+
+if [ "$tray_running" -eq 1 ]; then
+  echo "tray: native helper is running"
 else
   echo "tray: helper is not running" >&2
   fail=1

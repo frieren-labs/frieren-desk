@@ -12,7 +12,6 @@ ShellRoot {
     readonly property string agentName: "frieren"
     readonly property string modelName: "opencode-go/deepseek-v4.1-flash"
     readonly property string authProvider: modelName.split("/")[0]
-    readonly property string authScript: home + "/.config/quickshell/frieren/auth.py"
     readonly property bool authMissing: authStatus === "missing"
     readonly property string terminalLauncher: [
         "for term in xdg-terminal-exec foot kitty alacritty ghostty wezterm konsole gnome-terminal xterm; do",
@@ -37,6 +36,11 @@ ShellRoot {
     property bool authSaving: false
     property bool authOpen: false
     property bool stateLoaded: false
+    property var authCredentials: []
+    property var authCleanupIds: []
+    property string authNewCredential: ""
+    property string authFailMessage: ""
+    property string authQueuedKey: ""
 
     property bool chatOpen: false
     property bool busy: false
@@ -134,6 +138,19 @@ ShellRoot {
         onLoadFailed: {
             // No state file yet, or it cannot be read. Do not block the auth
             // flag from reaching the tray menu.
+            root.stateLoaded = true;
+            if (root.authStatus !== "unknown") root.saveState();
+        }
+    }
+
+    // A missing state file does not always emit loadFailed. Do not wait
+    // forever to persist the account flag.
+    Timer {
+        interval: 2000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (root.stateLoaded) return;
             root.stateLoaded = true;
             if (root.authStatus !== "unknown") root.saveState();
         }
@@ -428,39 +445,105 @@ ShellRoot {
     }
 
     // ---------------- opencode account ----------------
-    function parseAuthResponse(raw) {
+    function parseAuthJson(raw) {
         const text = String(raw || "").trim();
         if (text.length === 0) return null;
-        const lines = text.split("\n");
+        const start = text.indexOf("[");
+        const end = text.lastIndexOf("]");
+        if (start < 0 || end <= start) return null;
         try {
-            return JSON.parse(lines[lines.length - 1]);
+            return JSON.parse(text.slice(start, end + 1));
         } catch (e) {
             return null;
         }
     }
 
-    function applyAuthStatus(raw) {
-        const res = root.parseAuthResponse(raw);
-        let nextStatus = "error";
-        let nextDetail = "";
-        if (!res) {
-            nextDetail = "No response from opencode.";
-        } else if (!res.ok) {
-            nextDetail = res.error || "Could not read the opencode account.";
-        } else {
-            nextStatus = res.connected ? "connected" : "missing";
-            nextDetail = (res.methods || []).join(", ");
+    function authEntry(list) {
+        if (!Array.isArray(list)) return null;
+        for (let i = 0; i < list.length; i += 1) {
+            if (list[i] && list[i].id === root.authProvider) return list[i];
         }
-        const changed = root.authStatus !== nextStatus;
-        root.authStatus = nextStatus;
-        root.authDetail = nextDetail;
+        return null;
+    }
+
+    function authMethodList(entry) {
+        if (!entry) return [];
+        const connections = entry.connections || [];
+        const methods = [];
+        for (let i = 0; i < connections.length; i += 1) {
+            const c = connections[i];
+            const label = c.label || c.name || c.method;
+            if (label) methods.push(String(label));
+        }
+        return methods;
+    }
+
+    function authCredentialList(entry) {
+        if (!entry) return [];
+        const connections = entry.connections || [];
+        const credentials = [];
+        for (let i = 0; i < connections.length; i += 1) {
+            const c = connections[i];
+            if (c.type !== "credential") continue;
+            credentials.push({
+                id: String(c.id || ""),
+                label: String(c.label || ""),
+                method: String(c.method || "")
+            });
+        }
+        return credentials;
+    }
+
+    function applyAuthList(raw) {
+        const list = root.parseAuthJson(raw);
+        if (list === null) {
+            root.authStatus = "error";
+            root.authDetail = "No response from opencode.";
+            root.authCredentials = [];
+            return false;
+        }
+        const entry = root.authEntry(list);
+        const connections = entry ? (entry.connections || []) : [];
+        const methods = root.authMethodList(entry);
+        const connected = connections.length > 0;
+        root.authCredentials = root.authCredentialList(entry);
+        const changed = root.authStatus !== (connected ? "connected" : "missing");
+        root.authStatus = connected ? "connected" : "missing";
+        root.authDetail = methods.join(", ");
         if (changed && root.stateLoaded) root.saveState();
+        return true;
+    }
+
+    function cleanAuthOutput(out, err) {
+        let text = String(err || "") + "\n" + String(out || "");
+        text = text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+        const lines = text.split("\n");
+        const useful = [];
+        for (let i = 0; i < lines.length; i += 1) {
+            const line = lines[i].replace(/^[│┌└◇■\s]+/, "").trim();
+            if (line.length > 0) useful.push(line);
+        }
+        if (useful.length === 0) return "opencode command failed.";
+        return useful[useful.length - 1].slice(0, 240);
+    }
+
+    function randomHex(length) {
+        let out = "";
+        while (out.length < length) out += Math.floor(Math.random() * 16).toString(16);
+        return out.slice(0, length);
     }
 
     function checkAuth() {
-        if (authStatusProc.running) return;
+        if (authList.running || root.authSaving || root.authQueuedKey.length > 0) return;
         root.authChecking = true;
-        authStatusProc.running = true;
+        authList.purpose = "status";
+        authList.running = true;
+    }
+
+    function authRefresh() {
+        if (authList.running || root.authSaving) return;
+        authList.purpose = "refresh";
+        authList.running = true;
     }
 
     function openAuthDialog() {
@@ -472,38 +555,157 @@ ShellRoot {
     }
 
     function saveAuthKey(key) {
-        if (root.authSaving) return;
+        if (root.authSaving || root.authQueuedKey.length > 0) return;
+        key = String(key || "").trim();
+        if (key.length === 0) {
+            root.authMessage = "The API key is empty.";
+            root.authMessageError = true;
+            return;
+        }
+        if (authList.running) {
+            root.authQueuedKey = key;
+            return;
+        }
         root.authMessage = "";
         root.authMessageOk = false;
         root.authMessageError = false;
         root.authSaving = true;
-        authLogin.pendingKey = String(key || "");
-        authLogin.stdinEnabled = true;
-        authLogin.running = true;
+        root.authNewCredential = "cred_frieren_" + root.randomHex(16);
+        const payload = [{
+            id: root.authNewCredential,
+            integrationID: root.authProvider,
+            label: "Frieren",
+            active: true,
+            value: { type: "key", key: key }
+        }];
+        authImport.payload = JSON.stringify(payload);
+        authImport.stdinEnabled = true;
+        authImport.running = true;
     }
 
-    function applyAuthLogin(raw) {
-        const res = root.parseAuthResponse(raw);
-        if (!res) {
-            root.authMessage = "No response from opencode.";
-            root.authMessageError = true;
+    function authImportDone(code, out, err) {
+        if (code !== 0) {
+            root.authFail(root.cleanAuthOutput(out, err));
             return;
         }
-        if (!res.ok) {
-            root.authMessage = res.error || "Could not save the key.";
-            root.authMessageError = true;
+        authSwitch.command = [
+            root.opencodeBin, "auth", "switch",
+            root.authProvider, root.authNewCredential
+        ];
+        authSwitch.running = true;
+    }
+
+    function authSwitchDone(code, out, err) {
+        if (code !== 0) {
+            root.authRecoverNew(root.cleanAuthOutput(out, err));
             return;
         }
-        root.authStatus = res.connected ? "connected" : "missing";
-        root.authDetail = (res.methods || []).join(", ");
-        if (root.stateLoaded) root.saveState();
-        if (res.connected) {
-            root.authMessage = "Key saved.";
-            root.authMessageOk = true;
-            if (authDialog) authDialog.clearKey();
-        } else {
-            root.authMessage = "opencode did not keep the key.";
-            root.authMessageError = true;
+        authList.purpose = "verify";
+        authList.running = true;
+    }
+
+    function authRecoverNew(message) {
+        root.authFailMessage = message;
+        authLogout.purpose = "recovery";
+        authLogout.command = [
+            root.opencodeBin, "auth", "logout",
+            root.authProvider, root.authNewCredential
+        ];
+        authLogout.running = true;
+    }
+
+    function authCleanupStart(credentials) {
+        const ids = [];
+        for (let i = 0; i < credentials.length; i += 1) {
+            const c = credentials[i];
+            if (c.id === root.authNewCredential) continue;
+            if (c.label === "Frieren" || c.id.indexOf("cred_frieren_") === 0) ids.push(c.id);
+        }
+        root.authCleanupIds = ids;
+        root.authCleanupNext();
+    }
+
+    function authCleanupNext() {
+        if (!root.authCleanupIds || root.authCleanupIds.length === 0) {
+            authList.purpose = "final";
+            authList.running = true;
+            return;
+        }
+        const ids = root.authCleanupIds.slice();
+        const id = ids.shift();
+        root.authCleanupIds = ids;
+        authLogout.purpose = "cleanup";
+        authLogout.command = [
+            root.opencodeBin, "auth", "logout",
+            root.authProvider, id
+        ];
+        authLogout.running = true;
+    }
+
+    function authLogoutDone(code, out, err) {
+        if (authLogout.purpose === "recovery") {
+            root.authFail(root.authFailMessage);
+            return;
+        }
+        root.authCleanupNext();
+    }
+
+    function authFail(message) {
+        root.authSaving = false;
+        root.authMessage = message;
+        root.authMessageOk = false;
+        root.authMessageError = true;
+        Qt.callLater(root.authRefresh);
+    }
+
+    function authListDone(out, err, purpose, code) {
+        if (purpose === "status") {
+            root.authChecking = false;
+            if (code !== 0) {
+                root.authStatus = "error";
+                root.authDetail = root.cleanAuthOutput(out, err);
+                root.authCredentials = [];
+            } else {
+                root.applyAuthList(out);
+            }
+            if (root.authQueuedKey.length > 0) {
+                const key = root.authQueuedKey;
+                root.authQueuedKey = "";
+                Qt.callLater(() => root.saveAuthKey(key));
+            }
+            return;
+        }
+
+        if (purpose === "verify") {
+            const list = root.parseAuthJson(out);
+            if (code !== 0 || list === null) {
+                root.authFail(root.cleanAuthOutput(out, err));
+                return;
+            }
+            const credentials = root.authCredentialList(root.authEntry(list));
+            let found = false;
+            for (let i = 0; i < credentials.length; i += 1) {
+                if (credentials[i].id === root.authNewCredential) found = true;
+            }
+            if (!found) {
+                root.authFail("opencode did not keep the new credential.");
+                return;
+            }
+            root.authCleanupStart(credentials);
+            return;
+        }
+
+        const applied = root.applyAuthList(out);
+        root.authSaving = false;
+        if (purpose === "final") {
+            if (applied && root.authStatus === "connected") {
+                root.authMessage = "Key saved.";
+                root.authMessageOk = true;
+                if (authDialog) authDialog.clearKey();
+            } else {
+                root.authMessage = "opencode did not keep the key.";
+                root.authMessageError = true;
+            }
         }
     }
 
@@ -556,32 +758,52 @@ ShellRoot {
 
     // ---------------- opencode account (status, key, terminal login) ----------------
     Process {
-        id: authStatusProc
+        id: authList
+        property string purpose: "status"
         running: false
-        command: ["python3", root.authScript, "--bin", root.opencodeBin, "status", root.authProvider]
-        stdout: StdioCollector {
-            onStreamFinished: root.applyAuthStatus(text)
-        }
-        stderr: StdioCollector {}
-        onExited: (code, status) => { root.authChecking = false; }
+        command: [root.opencodeBin, "auth", "list", "--format", "json"]
+        stdout: StdioCollector { id: authListOut }
+        stderr: StdioCollector { id: authListErr }
+        onExited: (code, status) => root.authListDone(
+            authListOut.text, authListErr.text, authList.purpose, code)
     }
 
     Process {
-        id: authLogin
-        property string pendingKey: ""
+        id: authImport
+        property string payload: ""
         running: false
         stdinEnabled: true
-        command: ["python3", root.authScript, "--bin", root.opencodeBin, "login", root.authProvider]
-        stdout: StdioCollector {
-            onStreamFinished: root.applyAuthLogin(text)
-        }
-        stderr: StdioCollector {}
+        command: [root.opencodeBin, "auth", "import"]
+        stdout: StdioCollector { id: authImportOut }
+        stderr: StdioCollector { id: authImportErr }
         onStarted: {
-            authLogin.write(authLogin.pendingKey + "\n");
-            authLogin.pendingKey = "";
-            authLogin.stdinEnabled = false;
+            authImport.write(authImport.payload + "\n");
+            authImport.payload = "";
+            authImport.stdinEnabled = false;
         }
-        onExited: (code, status) => { root.authSaving = false; }
+        onExited: (code, status) => root.authImportDone(
+            code, authImportOut.text, authImportErr.text)
+    }
+
+    Process {
+        id: authSwitch
+        running: false
+        command: []
+        stdout: StdioCollector { id: authSwitchOut }
+        stderr: StdioCollector { id: authSwitchErr }
+        onExited: (code, status) => root.authSwitchDone(
+            code, authSwitchOut.text, authSwitchErr.text)
+    }
+
+    Process {
+        id: authLogout
+        property string purpose: "cleanup"
+        running: false
+        command: []
+        stdout: StdioCollector { id: authLogoutOut }
+        stderr: StdioCollector { id: authLogoutErr }
+        onExited: (code, status) => root.authLogoutDone(
+            code, authLogoutOut.text, authLogoutErr.text)
     }
 
     Process {
@@ -620,8 +842,7 @@ ShellRoot {
         running: true
         stdinEnabled: false
         command: [
-            "python3",
-            root.home + "/.config/quickshell/frieren/tray.py",
+            root.home + "/.config/quickshell/frieren/frieren-tray",
             root.home + "/.config/quickshell/frieren/assets/frieren-icon.png",
             root.home + "/.config/quickshell/frieren/assets/frieren-icon-128.argb",
             root.home + "/.config/quickshell/frieren/assets/frieren-icon-64.argb",

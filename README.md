@@ -11,16 +11,18 @@ with a settings menu.
 ## Install
 
 Requires: [Quickshell](https://quickshell.org) 0.3+, [opencode](https://opencode.ai)
-v2, Hyprland, Qt 6, and `python3` with `python-dbus` and `python-gobject` for
-the tray icon. The opencode account is configured after install.
+v2, Hyprland, Qt 6, and a C toolchain with the `gio` headers. The installer
+compiles the tray helper; on Arch that is `base-devel` (or `gcc`) plus `glib2`.
+The opencode account is configured after install.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash
 ```
 
 The installer downloads the latest `main` tarball and installs the Quickshell
-config, the app menu entry, the launcher at `~/.local/bin/frieren`, the icon and
-the opencode agent. It does not overwrite an existing agent file.
+config, the app menu entry, the launcher at `~/.local/bin/frieren`, the icon,
+the opencode agent and the compiled tray helper. It does not overwrite an
+existing agent file.
 
 ```bash
 # overwrite the agent file
@@ -37,7 +39,7 @@ Then open **Frieren** from the app menu (or run `~/.local/bin/frieren`). Run it
 again any time she is closed: it starts the pet and opens the chat, or toggles
 the chat when she is already on screen.
 
-On a fresh install, open the tray icon and choose **Setup account...**
+On a fresh install, open the tray icon and choose **Setup account**
 to paste an API key, or use **Terminal login** for providers that need a browser.
 The chat shows a banner until the account is connected.
 
@@ -74,7 +76,7 @@ Regenerate it with `python3 tools/make_poses_preview.py`.
 | Topic | Where |
 | --- | --- |
 | Config, tray menu and animations | `quickshell/frieren/README.md` |
-| OpenCode account setup | tray menu, `quickshell/frieren/auth.py`, `components/AuthDialog.qml` |
+| OpenCode account setup | tray menu, `quickshell/frieren/components/AuthDialog.qml`, `shell.qml` |
 | Persona and permissions | `opencode/agents/frieren.md` |
 | Sprite sheet and icon pipeline | `assets/frieren-sheet.png`, `tools/slice_spritesheet.py`, `tools/make_icon.sh` |
 | README showcase image | `tools/make_poses_preview.py` |

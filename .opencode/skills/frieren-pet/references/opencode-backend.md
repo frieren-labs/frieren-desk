@@ -29,16 +29,19 @@ Details that matter:
 
 The provider is `modelName` before the slash (`opencode-go` by default).
 
-- `auth.py status <provider>` runs `opencode auth list --format json` and prints
-  `{ok, connected, methods, credentials}`. The shell runs it at startup, when
-  the account dialog opens, and every 4 seconds while the dialog is open.
-- `auth.py login <provider>` reads the key from stdin and runs
-  `opencode auth import` followed by `opencode auth switch`, with the label
-  `Frieren`. It first logs out earlier Frieren credentials, so repeated saves
-  replace instead of piling up.
-- The import payload is the format accepted by `opencode auth import`: a list
-  with `id`, `integrationID`, `label`, `active` and
-  `value: {type: "key", key: ...}`.
+- `opencode auth list --format json` is the source of truth. The shell parses
+  it at startup, when the account dialog opens, and every 4 seconds while the
+  dialog is open. It keeps `authStatus`, `authDetail` and the credential ids in
+  memory, and saves only the connected bool as `auth` in `state.json`.
+- Save key builds an `opencode auth import` payload in QML and writes it to the
+  process stdin: a list with `id`, `integrationID`, `label`, `active` and
+  `value: {type: "key", key: ...}`. Then it runs
+  `opencode auth switch <provider> <id>` and verifies with another
+  `auth list`.
+- Only after the new credential is active does it log out older credentials
+  with label `Frieren` or id prefix `cred_frieren_`, so repeated saves replace
+  instead of piling up and a failed import never removes a working account.
+- If the switch fails, it logs out the new credential and refreshes the status.
 - `opencode auth login --method key` cannot take the key from `--answer`; it
   prompts on a TTY. That is why the pet imports instead of driving the prompt.
 - Providers with OAuth or device flows use the dialog's terminal button, which

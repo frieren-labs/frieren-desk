@@ -4,7 +4,7 @@
 
 A Quickshell configuration named `frieren` that draws a chibi Frieren on a
 Hyprland overlay, opens a chat panel next to her, and sends each message to
-`opencode run` using a dedicated agent. A Python helper publishes a real tray
+`opencode run` using a dedicated agent. A small C helper publishes a real tray
 icon with a DBusMenu.
 
 ## File map
@@ -15,8 +15,7 @@ icon with a DBusMenu.
 | `quickshell/frieren/components/PetSprite.qml` | Sprite, poses, timers, animations, drag, click |
 | `quickshell/frieren/components/ChatPanel.qml` | Chat frame, header, list and input |
 | `quickshell/frieren/components/MessageBubble.qml` | Message and tool log rendering |
-| `quickshell/frieren/tray.py` | StatusNotifierItem and `com.canonical.dbusmenu` helper |
-| `quickshell/frieren/auth.py` | opencode account status and non-interactive key import |
+| `quickshell/frieren/tray.c` | Native StatusNotifierItem and `com.canonical.dbusmenu` helper (compiled to `frieren-tray`) |
 | `quickshell/frieren/components/AuthDialog.qml` | OpenCode account card (status, key, terminal login) |
 | `quickshell/frieren/assets/poses/` | Six 228x256 PNG poses plus `poses.json` metadata |
 | `quickshell/frieren/assets/frieren-icon*.png` | Tray icon and chat avatar |
@@ -54,7 +53,7 @@ click / keybind / tray / IPC
 ```
 
 State changes go to `~/.local/state/frieren/state.json` through
-`saveState()`. `tray.py` reads that file and listens to IPC calls.
+`saveState()`. `tray.c` reads that file and listens to IPC calls.
 
 ## Windows
 
@@ -115,9 +114,9 @@ the component.
 ```text
 qs -c frieren
 ├── opencode run ...        (one process per message)
-├── python3 auth.py ...     (short-lived status and key import)
+├── opencode auth ...       (short-lived status, import, switch, logout)
 ├── sh -c <terminal> ...    (terminal login, only when requested)
-└── python3 tray.py ...     (long-lived helper)
+└── frieren-tray ...        (long-lived native helper, child of qs)
 ```
 
 - The opencode process runs with `HOME` as the working directory and a PATH that

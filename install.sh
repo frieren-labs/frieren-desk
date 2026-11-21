@@ -33,13 +33,14 @@ UNINSTALL=0
 PURGE=0
 SCRATCH=""
 ROOT=""
+TRAY_TMP=""
 
 usage() {
   cat <<'EOF'
 Usage: install.sh [OPTIONS]
 
 Installs the Frieren desktop pet: the Quickshell config, the app menu entry,
-the launcher and the opencode agent.
+the launcher, the compiled tray helper and the opencode agent.
 
 Options:
   --force       overwrite ~/.config/opencode/agents/frieren.md
@@ -50,6 +51,9 @@ Options:
 Environment:
   FRIEREN_REPO  GitHub repo to download (default: jd-apprentice/frieren-desk)
   FRIEREN_REF   branch, tag or commit to download (default: main)
+
+Build requirements: a C compiler, pkg-config and the gio-2.0 headers
+(gcc, pkgconf and glib2 on Arch). The installer compiles the tray helper.
 
 When piped into bash, pass options with bash -s --:
 
@@ -69,6 +73,9 @@ note() {
 cleanup() {
   if [ -n "$SCRATCH" ]; then
     rm -rf "$SCRATCH"
+  fi
+  if [ -n "$TRAY_TMP" ]; then
+    rm -f "$TRAY_TMP"
   fi
 }
 trap cleanup EXIT
@@ -150,29 +157,44 @@ fi
 
 locate_sources
 
-for file in quickshell/frieren/shell.qml tools/frieren-launch.sh \
-  opencode/agents/frieren.md; do
+for file in quickshell/frieren/shell.qml quickshell/frieren/tray.c \
+  tools/frieren-launch.sh opencode/agents/frieren.md; do
   [ -f "$ROOT/$file" ] || die "missing file in the release: $file"
 done
 
-command -v qs >/dev/null 2>&1 || {
-  echo "error: quickshell is missing (package: quickshell, binary: qs)" >&2
-  exit 1
-}
+command -v qs >/dev/null 2>&1 || \
+  die "quickshell is missing (package: quickshell, binary: qs)"
 
 command -v opencode >/dev/null 2>&1 || \
   echo "warning: opencode is not in PATH. The pet opens, but chat will not respond." >&2
 
-command -v python3 >/dev/null 2>&1 || \
-  echo "warning: python3 is missing. The tray icon will not start." >&2
+# Compile before touching the config, so a failed build does not leave a
+# half-installed tray.
+TRAY_CC="${CC:-cc}"
+command -v "$TRAY_CC" >/dev/null 2>&1 || \
+  die "a C compiler is required for the tray (package: gcc or base-devel)"
+command -v pkg-config >/dev/null 2>&1 || \
+  die "pkg-config is required for the tray (package: pkgconf)"
+pkg-config --exists gio-2.0 || \
+  die "the gio headers are required for the tray (package: glib2)"
 
-python3 -c "import dbus, gi" >/dev/null 2>&1 || \
-  echo "warning: install python-dbus and python-gobject to get the tray icon." >&2
+TRAY_TMP="$(mktemp)"
+if ! "$TRAY_CC" -O2 -s -o "$TRAY_TMP" "$ROOT/quickshell/frieren/tray.c" \
+  $(pkg-config --cflags gio-2.0) $(pkg-config --libs gio-2.0); then
+  die "could not compile tray.c"
+fi
 
 echo "Installing Frieren..."
 mkdir -p "$QS_DIR" "$OC_DIR" "$APP_DIR" "$ICON_DIR" "$BIN"
 cp -R "$ROOT/quickshell/frieren/." "$QS_DIR/"
+# Old helpers are gone: the tray is native and the account setup is in QML.
+rm -f "$QS_DIR/auth.py" "$QS_DIR/tray.py" "$QS_DIR/tray-run.sh"
 note "config: $QS_DIR"
+
+install -m 755 "$TRAY_TMP" "$QS_DIR/frieren-tray"
+rm -f "$TRAY_TMP"
+TRAY_TMP=""
+note "tray: native helper"
 
 install -m 755 "$ROOT/tools/frieren-launch.sh" "$LAUNCHER"
 note "launcher: $LAUNCHER"
@@ -230,7 +252,7 @@ Try it now:
   ~/.local/bin/frieren           # app menu entry, or this command
   qs -c frieren ipc call frieren toggle
 
-Fresh install: open the tray icon and choose "Setup account..." to add your API
+Fresh install: open the tray icon and choose "Setup account" to add your API
 key, or use Terminal login for providers that need a browser.
 
 Before using it, check the model in opencode/agents/frieren.md and in
