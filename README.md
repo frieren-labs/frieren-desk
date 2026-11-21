@@ -37,7 +37,7 @@ Then open **Frieren** from the app menu (or run `~/.local/bin/frieren`). Run it
 again any time she is closed: it starts the pet and opens the chat, or toggles
 the chat when she is already on screen.
 
-On a fresh install, open the tray icon and choose **Connect OpenCode account...**
+On a fresh install, open the tray icon and choose **Setup account...**
 to paste an API key, or use **Terminal login** for providers that need a browser.
 The chat shows a banner until the account is connected.
 

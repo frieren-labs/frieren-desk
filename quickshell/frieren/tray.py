@@ -170,7 +170,7 @@ class FrierenMenu(dbus.service.Object):
         add(ID_STOP, self._entry("Stop", enabled=state["busy"]))
         add(ID_SEP_1, self._entry(kind="separator"))
         add(ID_AUTH, self._entry(
-            "OpenCode account" if state["auth"] else "Connect OpenCode account..."))
+            "Account..." if state["auth"] else "Setup account..."))
         add(ID_SETTINGS, self._entry("Settings", kind="submenu", children_display="submenu"),
             [ID_WANDER, ID_SLEEP, ID_BLINK, ID_SIZE, ID_RESET])
         add(ID_WANDER, self._entry("Wander", toggle_type="checkmark",

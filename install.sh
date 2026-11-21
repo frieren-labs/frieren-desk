@@ -230,8 +230,8 @@ Try it now:
   ~/.local/bin/frieren           # app menu entry, or this command
   qs -c frieren ipc call frieren toggle
 
-Fresh install: open the tray icon and choose "Connect OpenCode account..." to
-add your API key, or use Terminal login for providers that need a browser.
+Fresh install: open the tray icon and choose "Setup account..." to add your API
+key, or use Terminal login for providers that need a browser.
 
 Before using it, check the model in opencode/agents/frieren.md and in
 quickshell/frieren/shell.qml (modelName): it must be one your account can pay for.

@@ -104,10 +104,10 @@ Toggle each item and confirm all three layers agree:
 
 ### Account
 
-- With credentials, the tray shows `OpenCode account` and the dialog shows
+- With credentials, the tray shows `Account...` and the dialog shows
   `Connected` with the method labels.
 - Without credentials (empty `XDG_DATA_HOME`, no `OPENCODE_API_KEY`), the tray
-  shows `Connect OpenCode account...`, the chat shows the banner, and sending a
+  shows `Setup account...`, the chat shows the banner, and sending a
   message opens the dialog instead of running opencode.
 - Saving a key clears the field, shows `Key saved.`, flips the status to
   `Connected`, removes the banner and writes `auth: true` to `state.json`.

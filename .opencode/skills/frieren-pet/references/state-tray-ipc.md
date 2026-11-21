@@ -67,7 +67,7 @@ It writes nothing itself: every action calls `qs -c frieren ipc call frieren`.
 | 14 | Reset position | `resetpos` |
 | 15 | Separator | none |
 | 16 | Quit | `quit` |
-| 17 | OpenCode account / Connect OpenCode account... | `auth` |
+| 17 | Account... / Setup account... | `auth` |
 
 Keep IDs stable. `notify_state()` sends updates only for IDs 1, 2, 4, 7, 8, 9,
 11 to 13 and 17. Add new toggle or radio IDs to that list.

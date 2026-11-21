@@ -8,8 +8,9 @@ change the system. She also has a real system tray icon with a settings menu.
 - App menu: open **Frieren** (or run `~/.local/bin/frieren`), installed by
   `install.sh`. It starts the pet and opens the chat when she is closed, or
   toggles the chat when she is running.
-- OpenCode account: tray icon → **OpenCode account...** (see below). The chat
-  shows a banner while the account is not connected.
+- Account: tray icon → **Setup account...** when not connected, **Account...**
+  when connected (see below). The chat shows a banner while the account is not
+  connected.
 - Drag her with the mouse: the position is saved in
   `~/.local/state/frieren/state.json`.
 - Drop her on the top bar or the bottom dock to minimize her to the tray icon.
@@ -49,7 +50,7 @@ and exposes a DBusMenu:
 - `Open / Close chat`
 - `New conversation`
 - `Stop` (enabled while opencode is busy)
-- `Connect OpenCode account...` (or `OpenCode account` when connected)
+- `Setup account...` when not connected, `Account...` when connected
 - `Settings` → `Wander`, `Sleep when idle`, `Blink`, `Size` (small, medium,
   large), `Reset position`
 - `Quit`
@@ -64,8 +65,8 @@ signal, so it exits with the shell instead of polling its IPC.
 A fresh install has no opencode credentials, so the first message would fail.
 The pet covers that setup:
 
-- Tray menu → **Connect OpenCode account...** opens the account dialog. The chat
-  banner opens the same dialog.
+- Tray menu → **Setup account...** (or **Account...** when connected) opens the
+  account dialog. The chat banner opens the same dialog.
 - **Save key**: paste the API key for the provider in `modelName`
   (`opencode-go` by default). `auth.py` reads the key from stdin and runs
   `opencode auth import` followed by `opencode auth switch`, with the label
