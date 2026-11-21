@@ -5,6 +5,9 @@ change the system. She also has a real system tray icon with a settings menu.
 
 ## Usage
 
+- App menu: open **Frieren** (or run `~/.local/bin/frieren`), installed by
+  `install.sh`. It starts the pet and opens the chat when she is closed, or
+  toggles the chat when she is running.
 - Drag her with the mouse: the position is saved in
   `~/.local/state/frieren/state.json`.
 - Drop her on the top bar or the bottom dock to minimize her to the tray icon.

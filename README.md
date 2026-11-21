@@ -8,18 +8,34 @@ things on the system. She reacts to what is happening (thinking, casting,
 success, error, sleep), wanders on her own, and minimizes to a real tray icon
 with a settings menu.
 
-## Quick Start
+## Install
 
 Requires: [Quickshell](https://quickshell.org) 0.3+, [opencode](https://opencode.ai)
 v2 with an authenticated provider, Hyprland, Qt 6, and `python3` with
 `python-dbus` and `python-gobject` for the tray icon.
 
 ```bash
-git clone https://github.com/jd-apprentice/frieren-desk.git
-cd frieren-desk
-./install.sh
-qs -c frieren -d
+curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash
 ```
+
+The installer downloads the latest `main` tarball and installs the Quickshell
+config, the app menu entry, the launcher at `~/.local/bin/frieren`, the icon and
+the opencode agent. It does not overwrite an existing agent file.
+
+```bash
+# overwrite the agent file
+curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash -s -- --force
+
+# remove the installed files (add --purge to delete the saved state too)
+curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash -s -- --uninstall
+```
+
+From a clone, `./install.sh` does the same without downloading. Set
+`FRIEREN_REF` to install a branch, tag or commit instead of `main`.
+
+Then open **Frieren** from the app menu (or run `~/.local/bin/frieren`). Run it
+again any time she is closed: it starts the pet and opens the chat, or toggles
+the chat when she is already on screen.
 
 Add the keybind and autostart from `hypr/frieren.lua`, or bind:
 
@@ -58,7 +74,7 @@ Regenerate it with `python3 tools/make_poses_preview.py`.
 | Sprite sheet and icon pipeline | `assets/frieren-sheet.png`, `tools/slice_spritesheet.py`, `tools/make_icon.sh` |
 | README showcase image | `tools/make_poses_preview.py` |
 | Hyprland bind and autostart | `hypr/frieren.lua` |
-| Installer | `install.sh` |
+| Installer and app menu launcher | `install.sh`, `tools/frieren-launch.sh` |
 
 ## Security
 
