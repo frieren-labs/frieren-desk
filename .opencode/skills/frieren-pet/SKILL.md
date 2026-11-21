@@ -124,4 +124,4 @@ Manual checklist and failure diagnosis: `references/verification.md`.
   the logs.
 - `tray.c` is the only tray helper and must stay on GIO/GDBus. `install.sh`
   compiles it and fails if the compiler or the gio headers are missing; there is
-  no Python fallback.
+  no script fallback.

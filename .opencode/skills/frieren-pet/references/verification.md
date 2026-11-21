@@ -53,7 +53,7 @@ The helper should be a child of `qs` and disappear within a second of
 `qs -c frieren ipc call frieren quit`. It should not spawn periodic `qs ...
 ping` children; idle CPU is zero and state changes arrive through the Gio file
 monitor. `frieren-tray` should sit at about 7 MB RSS; a much larger process
-means an old Python helper is still running.
+means a stale helper is still running.
 
 Toggle each item and confirm all three layers agree:
 

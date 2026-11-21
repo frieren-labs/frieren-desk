@@ -187,8 +187,6 @@ fi
 echo "Installing Frieren..."
 mkdir -p "$QS_DIR" "$OC_DIR" "$APP_DIR" "$ICON_DIR" "$BIN"
 cp -R "$ROOT/quickshell/frieren/." "$QS_DIR/"
-# Old helpers are gone: the tray is native and the account setup is in QML.
-rm -f "$QS_DIR/auth.py" "$QS_DIR/tray.py" "$QS_DIR/tray-run.sh"
 note "config: $QS_DIR"
 
 install -m 755 "$TRAY_TMP" "$QS_DIR/frieren-tray"
