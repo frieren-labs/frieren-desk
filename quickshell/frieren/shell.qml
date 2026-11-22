@@ -9,8 +9,8 @@ ShellRoot {
 
     readonly property string home: Quickshell.env("HOME") || ""
     readonly property string opencodeBin: home + "/.opencode/bin/opencode"
-    readonly property string agentName: "frieren"
-    readonly property string modelName: "opencode-go/deepseek-v4.1-flash"
+    property string agentName: "frieren"
+    property string modelName: "opencode-go/deepseek-v4.1-flash"
     readonly property string authProvider: modelName.split("/")[0]
     readonly property bool authMissing: authStatus === "missing"
     readonly property string terminalLauncher: [
@@ -42,6 +42,8 @@ ShellRoot {
     property string authNewCredential: ""
     property string authFailMessage: ""
     property string authQueuedKey: ""
+    property var availableModels: []
+    property bool modelsLoading: false
 
     property bool chatOpen: false
     property bool busy: false
@@ -56,6 +58,10 @@ ShellRoot {
     property bool sleepEnabled: true
     property bool blinkEnabled: true
     property bool logEnabled: true
+    property bool soundEnabled: true
+    property bool voiceSpeak: false
+    property string voiceId: "en-jenny"
+    property int voiceVolume: 100
     property real petScale: 1.0
     property real lastGoodX: 80
     property real lastGoodY: 220
@@ -71,6 +77,11 @@ ShellRoot {
     property bool chatRestored: false
     property string activeConvId: ""
     property var historyLoadQueue: []
+    property var searchResults: []
+    property bool searching: false
+    property string searchPending: ""
+    property string searchExecuted: ""
+    property var settingsDoc: ({})
 
     // per-turn telemetry (fed to the activity hook)
     property string turnPrompt: ""
@@ -81,6 +92,13 @@ ShellRoot {
     property bool turnLogged: false
     property var toolStartTimes: ({})
     property var toolFinished: ({})
+
+    // liveliness + stats
+    property int failStreak: 0
+    property int okStreak: 0
+    property var statsRows: []
+    property bool statsReady: false
+    property string pendingPrompt: ""
 
     // ---------------- theme (matugen/DMS, with fallback) ----------------
     QtObject {
@@ -144,10 +162,13 @@ ShellRoot {
     }
 
     // ---------------- persistent state (own file) ----------------
-    readonly property string stateDir: home + "/.local/state/frieren"
+    readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/frieren"
+    readonly property string settingsPath: (Quickshell.env("XDG_CONFIG_HOME") || home + "/.config") + "/frieren/settings.json"
     readonly property string statePath: stateDir + "/state.json"
     readonly property string dbPath: stateDir + "/frieren.db"
     readonly property string hookPath: home + "/.config/quickshell/frieren/hooks/frieren-log.sh"
+    readonly property string soundsDir: home + "/.config/quickshell/frieren/assets/sounds"
+    readonly property string toolsDir: home + "/.config/quickshell/frieren/tools"
 
     property real petX: 80
     property real petY: 220
@@ -186,6 +207,40 @@ ShellRoot {
         stdinEnabled: false
     }
 
+    // User config: watched, applies live. Wins over state.json for model/agent.
+    FileView {
+        id: settingsFile
+        path: root.settingsPath
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.parseSettings(text())
+    }
+
+    Process {
+        id: settingsWriter
+        property string payload: ""
+        running: false
+        stdinEnabled: true
+        command: ["sh", "-c", 'mkdir -p "$(dirname "$0")" && cat > "$0"', root.settingsPath]
+        onStarted: {
+            settingsWriter.stdinEnabled = true;
+            settingsWriter.write(settingsWriter.payload);
+            settingsWriter.payload = "";
+            settingsWriter.stdinEnabled = false;
+        }
+        onExited: {
+            settingsWriter.stdinEnabled = true;
+        }
+    }
+
+    // Keys present in settings.json win over state.json, whichever file
+    // loads first (parseSettings caches the whole doc, loadState skips
+    // keys it already provides, so both orders converge to settings).
+    function hasSetting(key) {
+        return root.settingsDoc
+            && Object.prototype.hasOwnProperty.call(root.settingsDoc, key);
+    }
+
     function loadState(raw) {
         // Changing petScale below triggers onPetScaleChanged. Mark the pet as
         // unplaced first so that handler does not save the stale default
@@ -196,12 +251,28 @@ ShellRoot {
             if (typeof doc.x === "number") root.petX = doc.x;
             if (typeof doc.y === "number") root.petY = doc.y;
             if (typeof doc.session === "string") root.sessionId = doc.session;
+            if (typeof doc.model === "string" && doc.model.indexOf("/") > 0
+                    && !root.hasSetting("model"))
+                root.modelName = doc.model;
             if (typeof doc.minimized === "boolean") root.minimized = doc.minimized;
-            if (typeof doc.wander === "boolean") root.wanderEnabled = doc.wander;
-            if (typeof doc.sleep === "boolean") root.sleepEnabled = doc.sleep;
-            if (typeof doc.blink === "boolean") root.blinkEnabled = doc.blink;
-            if (typeof doc.log === "boolean") root.logEnabled = doc.log;
-            if (typeof doc.scale === "number")
+            if (typeof doc.wander === "boolean" && !root.hasSetting("wander"))
+                root.wanderEnabled = doc.wander;
+            if (typeof doc.sleep === "boolean" && !root.hasSetting("sleep"))
+                root.sleepEnabled = doc.sleep;
+            if (typeof doc.blink === "boolean" && !root.hasSetting("blink"))
+                root.blinkEnabled = doc.blink;
+            if (typeof doc.log === "boolean" && !root.hasSetting("log"))
+                root.logEnabled = doc.log;
+            if (typeof doc.sound === "boolean" && !root.hasSetting("sound"))
+                root.soundEnabled = doc.sound;
+            if (typeof doc.voice === "boolean" && !root.hasSetting("voice"))
+                root.voiceSpeak = doc.voice;
+            if (typeof doc.voiceId === "string" && doc.voiceId.length > 0
+                    && !root.hasSetting("voiceId"))
+                root.voiceId = doc.voiceId;
+            if (typeof doc.volume === "number" && !root.hasSetting("volume"))
+                root.voiceVolume = Math.max(10, Math.min(150, Math.round(doc.volume)));
+            if (typeof doc.scale === "number" && !root.hasSetting("scale"))
                 root.petScale = Math.max(0.7, Math.min(1.4, doc.scale));
         } catch (e) {}
 
@@ -245,11 +316,16 @@ ShellRoot {
             x: Math.round(root.minimized ? root.petX : (pet ? pet.x : root.petX)),
             y: Math.round(root.minimized ? root.petY : (pet ? pet.y : root.petY)),
             session: root.sessionId,
+            model: root.modelName,
             minimized: root.minimized,
             wander: root.wanderEnabled,
             sleep: root.sleepEnabled,
             blink: root.blinkEnabled,
             log: root.logEnabled,
+            sound: root.soundEnabled,
+            voice: root.voiceSpeak,
+            voiceId: root.voiceId,
+            volume: root.voiceVolume,
             scale: root.petScale,
             auth: root.authStatus === "connected",
             busy: root.busy,
@@ -348,7 +424,19 @@ ShellRoot {
         "  ts INTEGER NOT NULL DEFAULT 0",
         ");",
         "CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversation_id);",
-        "CREATE INDEX IF NOT EXISTS conversations_updated ON conversations(updated_at);"
+        "CREATE INDEX IF NOT EXISTS conversations_updated ON conversations(updated_at);",
+        "CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts",
+        " USING fts5(conversation_id, role, text, tokenize='unicode61');",
+        "CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN",
+        "  INSERT INTO messages_fts(rowid, conversation_id, role, text)",
+        "  VALUES (new.id, new.conversation_id, new.role, new.text);",
+        "END;",
+        "CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN",
+        "  DELETE FROM messages_fts WHERE rowid = old.id;",
+        "END;",
+        "INSERT INTO messages_fts(rowid, conversation_id, role, text)",
+        " SELECT id, conversation_id, role, text FROM messages",
+        " WHERE id NOT IN (SELECT rowid FROM messages_fts);"
     ].join("\n")
 
     Process {
@@ -358,6 +446,7 @@ ShellRoot {
         command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
         stdout: StdioCollector { id: historyListOut }
         onStarted: {
+            historyLister.stdinEnabled = true;
             historyLister.write(root.historySchema + "\n" + root.historyListSql());
             historyLister.stdinEnabled = false;
         }
@@ -372,6 +461,7 @@ ShellRoot {
         command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
         stdout: StdioCollector { id: historyLoadOut }
         onStarted: {
+            historyLoader.stdinEnabled = true;
             historyLoader.write(root.historySchema + "\n"
                 + root.historyMessagesSql(historyLoader.conversationId));
             historyLoader.stdinEnabled = false;
@@ -393,6 +483,7 @@ ShellRoot {
         command: ["sqlite3", "-cmd", ".timeout 5000", root.dbPath]
 
         onStarted: {
+            historyWriter.stdinEnabled = true;
             historyWriter.write(historyWriter.sql);
             historyWriter.sql = "";
             historyWriter.stdinEnabled = false;
@@ -415,6 +506,24 @@ ShellRoot {
             sql = String(queue.shift());
             running = true;
         }
+    }
+
+    Process {
+        id: historySearcher
+        property string query: ""
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
+        stdout: StdioCollector { id: historySearchOut }
+        onStarted: {
+            if (historySearcher.query.length === 0)
+                historySearcher.query = root.searchPending;
+            historySearcher.stdinEnabled = true;
+            historySearcher.write(root.historySearchSql(historySearcher.query));
+            historySearcher.query = "";
+            historySearcher.stdinEnabled = false;
+        }
+        onExited: (code, status) => root.applySearch(historySearchOut.text)
     }
 
     // The JSON file used before the database existed. It is imported once and
@@ -504,6 +613,190 @@ ShellRoot {
     function queueHistoryWrite(sql) {
         historyWriter.queue.push(sql);
         historyWriter.startNext();
+    }
+
+    // Deep search over titles (LIKE) and message bodies (FTS5).
+    // Words are OR-ed: a conversation matches if any word hits.
+    function ftsMatchExpr(q) {
+        const words = String(q || "").split(/\s+/)
+            .map(w => w.replace(/["'*():^+\-]/g, "").trim())
+            .filter(w => w.length > 0)
+            .slice(0, 6);
+        if (words.length === 0) return "";
+        return words.map(w => '"' + w + '"*').join(" OR ");
+    }
+
+    function historySearchSql(q) {
+        const like = root.sqlLiteral("%" + String(q).replace(/[%_]/g, "") + "%");
+        const match = root.ftsMatchExpr(q);
+        let sql = "SELECT c.id, c.title, c.updated_at AS updated, "
+            + "(SELECT count(*) FROM messages m WHERE m.conversation_id = c.id"
+            + " AND m.role = 'user') AS questions "
+            + "FROM conversations c WHERE c.title LIKE " + like;
+        if (match.length > 0) {
+            sql += " OR c.id IN (SELECT conversation_id FROM messages_fts"
+                + " WHERE messages_fts MATCH " + root.sqlLiteral(match) + ")";
+        }
+        return root.historySchema + "\n" + sql + " ORDER BY c.updated_at DESC LIMIT 20;";
+    }
+
+    function searchHistory(q) {
+        q = String(q || "").trim();
+        root.searchPending = q;
+        if (q.length < 2) {
+            root.searchResults = [];
+            root.searching = false;
+            return;
+        }
+        root.searching = true;
+        if (!historySearcher.running) {
+            historySearcher.query = q;
+            root.searchExecuted = q;
+            historySearcher.running = true;
+        }
+    }
+
+    function applySearch(raw) {
+        let rows = [];
+        try {
+            rows = JSON.parse(String(raw || "[]"));
+        } catch (e) {}
+        if (!Array.isArray(rows)) rows = [];
+        root.searchResults = rows.map(row => ({
+            id: String(row.id || ""),
+            title: String(row.title || ""),
+            updated: Number(row.updated) || 0,
+            questions: Number(row.questions) || 0
+        })).filter(conv => conv.id.length > 0);
+        // The query changed while sqlite was working: run again.
+        if (root.searchPending.length >= 2 && root.searchPending !== root.searchExecuted) {
+            historySearcher.query = root.searchPending;
+            root.searchExecuted = root.searchPending;
+            historySearcher.running = true;
+        } else {
+            root.searching = false;
+        }
+    }
+
+    function showStats() {
+        root.chatOpen = true;
+        chatPanel.statsOpen = true;
+        root.loadStats();
+    }
+
+    // External config: ~/.config/frieren/settings.json (watched, wins over state).
+    function parseSettings(raw) {
+        let doc = null;
+        try {
+            doc = JSON.parse(raw);
+        } catch (e) {}
+        if (!doc || typeof doc !== "object") return;
+        root.settingsDoc = doc;
+        if (typeof doc.model === "string" && doc.model.indexOf("/") > 0
+                && doc.model !== root.modelName) {
+            root.modelName = doc.model;
+            root.saveState();
+        }
+        if (typeof doc.agent === "string" && doc.agent.length > 0
+                && doc.agent !== root.agentName) {
+            root.agentName = doc.agent;
+        }
+        let touched = false;
+        if (typeof doc.wander === "boolean" && doc.wander !== root.wanderEnabled) {
+            root.wanderEnabled = doc.wander;
+            touched = true;
+        }
+        if (typeof doc.sleep === "boolean" && doc.sleep !== root.sleepEnabled) {
+            root.sleepEnabled = doc.sleep;
+            touched = true;
+        }
+        if (typeof doc.blink === "boolean" && doc.blink !== root.blinkEnabled) {
+            root.blinkEnabled = doc.blink;
+            touched = true;
+        }
+        if (typeof doc.log === "boolean" && doc.log !== root.logEnabled) {
+            root.logEnabled = doc.log;
+            touched = true;
+        }
+        if (typeof doc.sound === "boolean" && doc.sound !== root.soundEnabled) {
+            root.soundEnabled = doc.sound;
+            touched = true;
+        }
+        if (typeof doc.voice === "boolean" && doc.voice !== root.voiceSpeak) {
+            root.voiceSpeak = doc.voice;
+            touched = true;
+        }
+        if (typeof doc.voiceId === "string" && doc.voiceId.length > 0
+                && doc.voiceId !== root.voiceId) {
+            root.voiceId = doc.voiceId;
+            touched = true;
+        }
+        if (typeof doc.volume === "number") {
+            const vol = Math.max(10, Math.min(150, Math.round(doc.volume)));
+            if (vol !== root.voiceVolume) {
+                root.voiceVolume = vol;
+                touched = true;
+            }
+        }
+        if (typeof doc.scale === "number") {
+            const s = Math.max(0.7, Math.min(1.4, doc.scale));
+            if (s !== root.petScale) {
+                root.petScale = s;
+                touched = true;
+            }
+        }
+        if (touched) root.saveState();
+    }
+
+    function saveSettingsDoc() {
+        settingsWriter.payload = JSON.stringify(root.settingsDoc, null, 2) + "\n";
+        settingsWriter.running = true;
+    }
+
+    function mergeSettings(patch) {
+        const doc = Object.assign({}, root.settingsDoc, patch);
+        root.settingsDoc = doc;
+        root.saveSettingsDoc();
+    }
+
+    // Toggle helpers shared by tray IPC, slash commands and settings import.
+    // key: wander | sleep | blink | log | sound | voice (settings key names).
+    function setToggle(key, mode) {
+        const v = (mode === "toggle")
+            ? !root.toggleValue(key)
+            : (mode === "true" || mode === "on" || mode === "1");
+        if (key === "wander") root.wanderEnabled = v;
+        else if (key === "sleep") root.sleepEnabled = v;
+        else if (key === "blink") root.blinkEnabled = v;
+        else if (key === "log") root.logEnabled = v;
+        else if (key === "sound") root.soundEnabled = v;
+        else if (key === "voice") root.voiceSpeak = v;
+        else return;
+        root.saveState();
+        const patch = {};
+        patch[key] = v;
+        root.mergeSettings(patch);
+    }
+
+    function toggleValue(key) {
+        if (key === "wander") return root.wanderEnabled;
+        if (key === "sleep") return root.sleepEnabled;
+        if (key === "blink") return root.blinkEnabled;
+        if (key === "log") return root.logEnabled;
+        if (key === "sound") return root.soundEnabled;
+        if (key === "voice") return root.voiceSpeak;
+        return false;
+    }
+
+    function setAgent(id) {
+        id = String(id || "").trim();
+        if (id.length === 0 || id === root.agentName) return;
+        root.agentName = id;
+        const doc = Object.assign({}, root.settingsDoc);
+        doc.agent = id;
+        root.settingsDoc = doc;
+        root.saveSettingsDoc();
+        root.addMessage("system", "Agent: " + id + ". Next message uses it.");
     }
 
     function applyHistoryList(raw) {
@@ -763,6 +1056,137 @@ ShellRoot {
         root.saveState();
     }
 
+    // ---------------- export / stats / slash / hypr ----------------
+    function conversationMarkdown() {
+        const lines = [];
+        lines.push("# Frieren conversation");
+        lines.push("");
+        for (let i = 0; i < chat.count; i += 1) {
+            const m = chat.get(i);
+            if (m.role === "user") lines.push("## You");
+            else if (m.role === "assistant") lines.push("## Frieren");
+            else if (m.role === "tool") lines.push("### `" + String(m.command || m.text || "action").slice(0, 120) + "`");
+            else continue;
+            if (m.text && m.role !== "tool") lines.push(String(m.text));
+            if (m.output) {
+                lines.push("");
+                lines.push("```");
+                lines.push(String(m.output).slice(0, 4000));
+                lines.push("```");
+            }
+            lines.push("");
+        }
+        return lines.join("\n");
+    }
+
+    function exportConversation() {
+        const md = root.conversationMarkdown();
+        if (md.trim().length === 0) {
+            root.addMessage("system", "Nothing to export yet.");
+            return;
+        }
+        Quickshell.clipboardText = md;
+        const id = root.activeConvId.length > 0 ? root.activeConvId : ("local-" + Date.now());
+        exportWriter.target = root.stateDir + "/exports/conv-" + id + ".md";
+        exportWriter.command = ["sh", "-c", 'mkdir -p "$(dirname "$0")" && cat > "$0"', exportWriter.target];
+        exportWriter.payload = md;
+        exportWriter.running = true;
+        root.addMessage("system", "Conversation copied as Markdown and saved to exports/conv-" + id + ".md");
+    }
+
+    function loadStats() {
+        if (statsLoader.running) return;
+        root.statsReady = false;
+        statsLoader.running = true;
+    }
+
+    function applyStats(raw) {
+        let rows = [];
+        try {
+            rows = JSON.parse(String(raw || "[]"));
+        } catch (e) {}
+        if (!Array.isArray(rows)) rows = [];
+        root.statsRows = rows;
+        root.statsReady = true;
+    }
+
+    // Slash commands typed in the chat box. Returns true when handled.
+    function handleSlash(text) {
+        if (text[0] !== "/") return false;
+        const parts = text.slice(1).split(/\s+/);
+        const cmd = (parts[0] || "").toLowerCase();
+        const arg = parts.slice(1).join(" ").trim();
+        if (cmd === "new" || cmd === "fresh" || cmd === "clear") {
+            root.freshSession();
+            return true;
+        }
+        if (cmd === "export") {
+            root.exportConversation();
+            return true;
+        }
+        if (cmd === "stats") {
+            root.showStats();
+            return true;
+        }
+        if (cmd === "retry") {
+            if (root.turnPrompt.length > 0 && !root.busy) root.send(root.turnPrompt);
+            else root.addMessage("system", "Nothing to retry yet.");
+            return true;
+        }
+        if (cmd === "help") {
+            root.addMessage("system", "Commands: /new, /retry, /export, /stats, /model provider/name, /agent name, /sound on|off, /voice on|off|<id>, /volume 10-150, /help. Prefix with @window to include the focused Hyprland window. Drop files into the chat to attach @paths.");
+            return true;
+        }
+        if (cmd === "agent") {
+            if (arg.length > 0) root.setAgent(arg);
+            else root.addMessage("system", "Usage: /agent name (current " + root.agentName + ").");
+            return true;
+        }
+        if (cmd === "sound") {
+            root.setToggle("sound", arg.length > 0 ? arg : "toggle");
+            root.addMessage("system", "Sound " + (root.soundEnabled ? "on." : "off."));
+            return true;
+        }
+        if (cmd === "voice") {
+            if (arg.length === 0) {
+                root.addMessage("system", "Voice replies " + (root.voiceSpeak ? "on" : "off")
+                    + " (" + root.voiceId + " at " + root.voiceVolume + "%). /voice on|off|<id>, voices: frieren-voice list.");
+            } else if (arg === "on" || arg === "off" || arg === "toggle") {
+                root.setToggle("voice", arg);
+                root.addMessage("system", "Voice replies " + (root.voiceSpeak ? "on" : "off")
+                    + " (" + root.voiceId + " at " + root.voiceVolume + "%).");
+            } else {
+                root.setVoice(arg);
+            }
+            return true;
+        }
+        if (cmd === "volume") {
+            root.setVolume(arg);
+            return true;
+        }
+        if (cmd === "model") {
+            if (arg.length > 0) {
+                if (arg.indexOf("/") > 0) root.setModel(arg);
+                else root.addMessage("system", "Usage: /model provider/name (current " + root.modelName + ").");
+            } else {
+                root.addMessage("system", "Usage: /model provider/name (current " + root.modelName + ").");
+            }
+            return true;
+        }
+        return false;
+    }
+
+    function sendWithHypr(text) {
+        // @window prefix (or hypr auto-context when available) adds the
+        // focused Hyprland window to the prompt so "fix this" works.
+        if (text.indexOf("@window") < 0) {
+            root.startAgent(text);
+            return;
+        }
+        root.pendingPrompt = text;
+        hyprCtx.running = true;
+    }
+
     function updateMessage(idx, props) {
         if (idx < 0 || idx >= chat.count) return;
         for (const key in props) chat.setProperty(idx, key, props[key]);
@@ -824,11 +1248,23 @@ ShellRoot {
         toolActive = status === "running" || status === "pending";
         if (status === "completed") toolCount = toolCount + 1;
         else if (status === "error") pet.react("error");
+        if (pet) {
+            if (status === "running" || status === "pending") {
+                const readers = ["read", "fetch", "webfetch", "glob", "grep",
+                    "search", "Read", "Fetch", "Glob", "Grep"];
+                pet.reading = readers.indexOf(String(part.tool || "")) >= 0;
+            } else {
+                pet.reading = false;
+            }
+        }
     }
 
     function showError(err) {
         hasError = true;
         toolActive = false;
+        root.failStreak += 1;
+        root.okStreak = 0;
+        root.playSound("thud");
         let msg = "Unknown error";
         if (err) {
             if (typeof err === "string") msg = err;
@@ -837,6 +1273,7 @@ ShellRoot {
         // Quota errors come with a huge JSON blob inside
         const brace = msg.indexOf("{");
         if (msg.length > 220 && brace > 0) msg = msg.slice(0, brace).trim();
+        if (root.failStreak >= 3) msg += " (" + root.failStreak + " in a row, want to try another way?)";
         root.turnError = msg;
         addMessage("system", "⚠ " + msg);
         pet.react("error");
@@ -858,21 +1295,7 @@ ShellRoot {
         else if (ev.type === "error") showError(ev.error);
     }
 
-    function send(text) {
-        text = String(text || "").trim();
-        if (text.length === 0) return;
-        if (root.minimized) root.restorePet();
-        if (root.authStatus === "missing") {
-            addMessage("system", "OpenCode is not connected. Add your API key to continue.");
-            root.chatOpen = true;
-            root.openAuthDialog();
-            return;
-        }
-        if (busy) {
-            addMessage("system", "I'm still working on the previous request. Wait or press the stop button.");
-            return;
-        }
-
+    function startAgent(text) {
         addMessage("user", text);
         busy = true;
         toolActive = false;
@@ -904,6 +1327,25 @@ ShellRoot {
         agent.running = true;
     }
 
+    function send(text) {
+        text = String(text || "").trim();
+        if (text.length === 0) return;
+        if (root.minimized) root.restorePet();
+        if (root.authStatus === "missing") {
+            addMessage("system", "OpenCode is not connected. Add your API key to continue.");
+            root.chatOpen = true;
+            root.openAuthDialog();
+            return;
+        }
+        if (busy) {
+            addMessage("system", "I'm still working on the previous request. Wait or press the stop button.");
+            return;
+        }
+        if (root.handleSlash(text)) return;
+        root.playSound("pop");
+        root.sendWithHypr(text);
+    }
+
     function stopAgent() {
         if (agent.running) {
             stopping = true;
@@ -911,6 +1353,8 @@ ShellRoot {
         }
         busy = false;
         toolActive = false;
+        if (pet) pet.reading = false;
+        root.playSound("pop");
         addMessage("system", "Stopped.");
         root.logTurn(-1, "stopped");
         root.saveHistory();
@@ -922,6 +1366,7 @@ ShellRoot {
         root.saveHistory();
         root.sessionId = "";
         root.activeConvId = "";
+        root.okStreak = 0;
         root.saveState();
         chat.clear();
         partIndex = ({});
@@ -957,6 +1402,7 @@ ShellRoot {
         stdinEnabled: true
         command: ["sh", root.hookPath]
         onStarted: {
+            hookRunner.stdinEnabled = true;
             hookRunner.write(hookRunner.payload + "\n");
             hookRunner.payload = "";
             hookRunner.stdinEnabled = false;
@@ -972,6 +1418,58 @@ ShellRoot {
         if (!root.logEnabled) return;
         root.hookQueue.push(JSON.stringify(event));
         root.flushHooks();
+    }
+
+    Process {
+        id: exportWriter
+        property string payload: ""
+        property string target: ""
+        running: false
+        stdinEnabled: true
+        command: ["sh", "-c", 'mkdir -p "$(dirname "$0")" && cat > "$0"', target]
+        onStarted: {
+            exportWriter.stdinEnabled = true;
+            exportWriter.write(exportWriter.payload);
+            exportWriter.payload = "";
+            exportWriter.stdinEnabled = false;
+        }
+        onExited: {
+            exportWriter.stdinEnabled = true;
+        }
+    }
+
+    Process {
+        id: statsLoader
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
+        stdout: StdioCollector { id: statsOut }
+        onStarted: {
+            statsLoader.stdinEnabled = true;
+            statsLoader.write("SELECT * FROM daily ORDER BY day DESC LIMIT 14;");
+            statsLoader.stdinEnabled = false;
+        }
+        onExited: (code, status) => root.applyStats(statsOut.text)
+    }
+
+    Process {
+        id: hyprCtx
+        running: false
+        stdout: StdioCollector { id: hyprOut }
+        stderr: StdioCollector { id: hyprErr }
+        command: ["sh", "-c", 'command -v hyprctl >/dev/null 2>&1 || exit 0; hyprctl activewindow -j 2>/dev/null || echo "{}"']
+        onExited: (code, status) => {
+            let extra = "";
+            try {
+                const w = JSON.parse(String(hyprOut.text || "{}"));
+                if (w && (w.title || w.class)) {
+                    extra = "\n\n[Focused window: " + String(w.class || "") + " - " + String(w.title || "").slice(0, 200) + "]";
+                }
+            } catch (e) {}
+            const base = root.pendingPrompt.replace("@window", "").trim();
+            root.pendingPrompt = "";
+            root.startAgent(extra ? base + extra : base);
+        }
     }
 
     function flushHooks() {
@@ -999,6 +1497,191 @@ ShellRoot {
                 : (errorText || (exitCode !== 0 ? "exit " + exitCode : "")),
             model: root.modelName
         });
+    }
+
+    // ---------------- sound, notify, voice, backup ----------------
+    function playSound(name) {
+        if (!root.soundEnabled) return;
+        soundRunner.sound = name;
+        if (!soundRunner.running) soundRunner.running = true;
+    }
+
+    Process {
+        id: soundRunner
+        property string sound: "pop"
+        running: false
+        command: ["sh", "-c",
+            'f="$0"; [ -f "$f" ] || exit 0;'
+            + ' paplay "$f" 2>/dev/null || aplay -q "$f" 2>/dev/null'
+            + ' || ffplay -nodisp -autoexit -loglevel quiet "$f" 2>/dev/null || true',
+            root.soundsDir + "/pop.wav"]
+        onStarted: {
+            soundRunner.command = ["sh", "-c",
+                'f="$0"; [ -f "$f" ] || exit 0;'
+                + ' paplay "$f" 2>/dev/null || aplay -q "$f" 2>/dev/null'
+                + ' || ffplay -nodisp -autoexit -loglevel quiet "$f" 2>/dev/null || true',
+                root.soundsDir + "/" + soundRunner.sound + ".wav"];
+        }
+    }
+
+    function notifyTurn(title, body) {
+        notifier.title = String(title || "Frieren").slice(0, 60);
+        notifier.body = String(body || "").slice(0, 200);
+        if (!notifier.running) notifier.running = true;
+    }
+
+    Process {
+        id: notifier
+        property string title: "Frieren"
+        property string body: ""
+        running: false
+        command: ["sh", "-c",
+            'command -v notify-send >/dev/null 2>&1 || exit 0;'
+            + ' exec notify-send "$0" "$1"',
+            "Frieren", ""]
+        onStarted: {
+            notifier.command = ["sh", "-c",
+                'command -v notify-send >/dev/null 2>&1 || exit 0;'
+                + ' exec notify-send "$0" "$1"',
+                notifier.title, notifier.body];
+        }
+    }
+
+    function lastAssistantText() {
+        for (let i = chat.count - 1; i >= 0; i -= 1) {
+            const m = chat.get(i);
+            if (m.role === "assistant" && String(m.text || "").trim().length > 0)
+                return String(m.text);
+        }
+        return "";
+    }
+
+    function speak(text) {
+        text = String(text || "").trim();
+        if (text.length === 0) text = root.lastAssistantText();
+        if (text.length === 0) {
+            root.addMessage("system", "Nothing to read aloud yet.");
+            return;
+        }
+        sayRunner.payload = text;
+        sayRunner.command = ["sh", root.toolsDir + "/frieren-say.sh",
+            root.voiceId, String(root.voiceVolume)];
+        if (!sayRunner.running) sayRunner.running = true;
+    }
+
+    function setVoice(id) {
+        id = String(id || "").trim();
+        if (id.length === 0 || id === root.voiceId) return;
+        root.voiceId = id;
+        root.voiceSpeak = true;
+        root.saveState();
+        root.mergeSettings({ voiceId: id, voice: true });
+        root.addMessage("system", "Voice: " + id + ". Next replies speak with it.");
+    }
+
+    function setVolume(value) {
+        let v = parseInt(value, 10);
+        if (isNaN(v)) {
+            root.addMessage("system", "Usage: /volume 10-150 (current " + root.voiceVolume + ").");
+            return;
+        }
+        v = Math.max(10, Math.min(150, v));
+        if (v === root.voiceVolume) return;
+        root.voiceVolume = v;
+        root.saveState();
+        root.mergeSettings({ volume: v });
+        root.addMessage("system", "Voice volume: " + v + "%.");
+    }
+
+    Process {
+        id: sayRunner
+        property string payload: ""
+        running: false
+        stdinEnabled: true
+        command: ["sh", root.toolsDir + "/frieren-say.sh"]
+        stdout: StdioCollector { id: sayOut }
+        stderr: StdioCollector { id: sayErr }
+        onStarted: {
+            sayRunner.stdinEnabled = true;
+            sayRunner.write(sayRunner.payload);
+            sayRunner.payload = "";
+            sayRunner.stdinEnabled = false;
+        }
+        onExited: (code, status) => {
+            sayRunner.stdinEnabled = true;
+            if (code !== 0)
+                root.addMessage("system", "Voice: " + String(sayErr.text || sayOut.text || "engine not available").trim().slice(0, 200));
+        }
+    }
+
+    // Push-to-talk: first call records, second call stops and transcribes.
+    function toggleDictation() {
+        if (listenRecorder.running) {
+            listenRecorder.running = false;
+            return;
+        }
+        if (transcribeRunner.running) return;
+        listenRecorder.running = true;
+        root.addMessage("system", "Listening… call listen again (or the mic button) to stop.");
+    }
+
+    Process {
+        id: listenRecorder
+        running: false
+        command: ["sh", root.toolsDir + "/frieren-listen.sh", "record",
+            root.stateDir + "/dictate.wav"]
+        stderr: StdioCollector { id: listenErr }
+        onExited: (code, status) => {
+            if (code !== 0 && String(listenErr.text || "").trim().length > 0)
+                root.addMessage("system", "Mic: " + String(listenErr.text).trim().slice(0, 200));
+            else if (!transcribeRunner.running) transcribeRunner.running = true;
+        }
+    }
+
+    Process {
+        id: transcribeRunner
+        running: false
+        command: ["sh", root.toolsDir + "/frieren-listen.sh", "transcribe",
+            root.stateDir + "/dictate.wav"]
+        stdout: StdioCollector { id: transcribeOut }
+        stderr: StdioCollector { id: transcribeErr }
+        onExited: (code, status) => {
+            const text = String(transcribeOut.text || "").trim();
+            if (code === 0 && text.length > 0) chatPanel.appendInput(text);
+            else root.addMessage("system", "Dictation: "
+                + String(transcribeErr.text || "no speech recognized").trim().slice(0, 200));
+        }
+    }
+
+    function runBackup() {
+        if (backupRunner.running) return;
+        backupRunner.running = true;
+    }
+
+    Process {
+        id: backupRunner
+        running: false
+        stdout: StdioCollector { id: backupOut }
+        stderr: StdioCollector { id: backupErr }
+        command: ["sh", "-c", 'exec "$0" backup',
+            (Quickshell.env("XDG_BIN_HOME") || home + "/.local/bin") + "/frieren-backup"]
+        onExited: (code, status) => {
+            if (code === 0) {
+                const msg = String(backupOut.text || "Backup done.").trim().slice(0, 200);
+                root.addMessage("system", msg);
+                root.notifyTurn("Frieren backup", msg);
+            } else {
+                const msg = "Backup: " + String(backupErr.text || "failed").trim().slice(0, 200);
+                root.addMessage("system", msg);
+                root.notifyTurn("Frieren backup", msg);
+            }
+        }
+    }
+
+    function openHistory() {
+        if (root.minimized) root.restorePet();
+        root.chatOpen = true;
+        chatPanel.historyOpen = true;
     }
 
     // ---------------- opencode account ----------------
@@ -1107,6 +1790,48 @@ ShellRoot {
         root.authOpen = true;
         root.authMessage = "";
         root.authMessageOk = false;
+        root.authMessageError = false;
+        root.checkAuth();
+        root.refreshModels();
+    }
+
+    function refreshModels() {
+        if (modelLister.running) return;
+        root.modelsLoading = true;
+        modelLister.running = true;
+    }
+
+    function applyModelList(raw) {
+        root.modelsLoading = false;
+        const lines = String(raw || "").split("\n");
+        const out = [];
+        for (let i = 0; i < lines.length; i += 1) {
+            const m = lines[i].trim();
+            if (m.length > 0 && m.indexOf("/") > 0 && out.indexOf(m) < 0) out.push(m);
+        }
+        // Current provider first so the relevant models are on top.
+        const prov = root.authProvider;
+        out.sort((a, b) => {
+            const ap = a.indexOf(prov + "/") === 0 ? 0 : 1;
+            const bp = b.indexOf(prov + "/") === 0 ? 0 : 1;
+            if (ap !== bp) return ap - bp;
+            return a < b ? -1 : (a > b ? 1 : 0);
+        });
+        root.availableModels = out;
+    }
+
+    function setModel(id) {
+        id = String(id || "").trim();
+        if (id.length === 0 || id.indexOf("/") < 0) return;
+        if (id === root.modelName) return;
+        root.modelName = id;
+        root.saveState();
+        const doc = Object.assign({}, root.settingsDoc);
+        doc.model = id;
+        root.settingsDoc = doc;
+        root.saveSettingsDoc();
+        root.authMessage = "Model: " + id + ". Next message uses it.";
+        root.authMessageOk = true;
         root.authMessageError = false;
         root.checkAuth();
     }
@@ -1300,15 +2025,33 @@ ShellRoot {
         onExited: (code, status) => {
             root.busy = false;
             root.toolActive = false;
+            if (pet) pet.reading = false;
             if (root.stopping) {
                 root.stopping = false;
                 return;
             }
-            if (code === 0) {
+            const clean = code === 0 && !root.hasError && root.turnToolFails === 0;
+            const duration = root.turnStarted > 0 ? Date.now() - root.turnStarted : 0;
+            if (clean) {
+                root.failStreak = 0;
+                root.okStreak += 1;
+                root.playSound("chime");
                 pet.react("ok");
-            } else if (!root.hasError && code !== 130) {
-                pet.react("error");
-                root.addMessage("system", "opencode exited with code " + code + ".");
+                if (root.voiceSpeak) root.speak("");
+            } else {
+                if (code !== 130) {
+                    root.failStreak += 1;
+                    root.playSound("thud");
+                }
+                root.okStreak = 0;
+                if (!root.hasError) pet.react("error");
+                if (!root.hasError && code !== 0 && code !== 130)
+                    root.addMessage("system", "opencode exited with code " + code + ".");
+            }
+            // Nudge when a long turn finishes while the chat is closed.
+            if (!root.chatOpen && duration >= 30000) {
+                if (clean) root.notifyTurn("Frieren: done", "Finished in " + Math.round(duration / 1000) + "s.");
+                else if (code !== 130) root.notifyTurn("Frieren: error", String(root.turnError || ("exit " + code)).slice(0, 160));
             }
             root.logTurn(code, "");
             root.saveHistory();
@@ -1336,6 +2079,7 @@ ShellRoot {
         stdout: StdioCollector { id: authImportOut }
         stderr: StdioCollector { id: authImportErr }
         onStarted: {
+            authImport.stdinEnabled = true;
             authImport.write(authImport.payload + "\n");
             authImport.payload = "";
             authImport.stdinEnabled = false;
@@ -1352,6 +2096,15 @@ ShellRoot {
         stderr: StdioCollector { id: authSwitchErr }
         onExited: (code, status) => root.authSwitchDone(
             code, authSwitchOut.text, authSwitchErr.text)
+    }
+
+    Process {
+        id: modelLister
+        running: false
+        command: [root.opencodeBin, "models"]
+        stdout: StdioCollector { id: modelListOut }
+        stderr: StdioCollector { id: modelListErr }
+        onExited: (code, status) => root.applyModelList(modelListOut.text)
     }
 
     Process {
@@ -1406,7 +2159,8 @@ ShellRoot {
             root.home + "/.config/quickshell/frieren/assets/frieren-icon-128.argb",
             root.home + "/.config/quickshell/frieren/assets/frieren-icon-64.argb",
             root.home + "/.config/quickshell/frieren/assets/frieren-icon-32.argb",
-            root.statePath
+            root.statePath,
+            (Quickshell.env("XDG_DATA_HOME") || root.home + "/.local/share") + "/frieren/voice/voices"
         ]
         stdout: SplitParser {
             splitMarker: "\n"
@@ -1434,6 +2188,12 @@ ShellRoot {
 
         function stop(): void { root.stopAgent() }
 
+        function exportmd(): void { root.exportConversation() }
+
+        function stats(): void {
+            root.showStats();
+        }
+
         function hide(): void { root.chatOpen = false }
 
         function auth(): void { root.openAuthDialog() }
@@ -1446,32 +2206,37 @@ ShellRoot {
 
         function restore(): void { root.restorePet() }
 
-        function wander(mode: string): void {
-            root.wanderEnabled = (mode === "toggle") ? !root.wanderEnabled : (mode === "true");
-            root.saveState();
-        }
+        function wander(mode: string): void { root.setToggle("wander", mode) }
 
         function sleep(mode: string): void {
-            root.sleepEnabled = (mode === "toggle") ? !root.sleepEnabled : (mode === "true");
+            root.setToggle("sleep", mode);
             if (!root.sleepEnabled && pet) pet.wake();
-            root.saveState();
         }
 
-        function blink(mode: string): void {
-            root.blinkEnabled = (mode === "toggle") ? !root.blinkEnabled : (mode === "true");
-            root.saveState();
-        }
+        function blink(mode: string): void { root.setToggle("blink", mode) }
 
-        function log(mode: string): void {
-            root.logEnabled = (mode === "toggle") ? !root.logEnabled : (mode === "true");
-            root.saveState();
-        }
+        function log(mode: string): void { root.setToggle("log", mode) }
+
+        function sound(mode: string): void { root.setToggle("sound", mode) }
+
+        function voice(mode: string): void { root.setToggle("voice", mode) }
+
+        function voiceid(id: string): void { root.setVoice(id) }
+
+        function volume(value: string): void { root.setVolume(value) }
+
+        function backup(): void { root.runBackup() }
+
+        function listen(): void { root.toggleDictation() }
+
+        function say(text: string): void { root.speak(text) }
 
         function scale(value: string): void {
             const v = parseFloat(value);
             if (!isNaN(v)) {
                 root.petScale = Math.max(0.7, Math.min(1.4, v));
                 root.saveState();
+                root.mergeSettings({ scale: root.petScale });
             }
         }
 
@@ -1526,6 +2291,7 @@ ShellRoot {
             busy: root.busy
             toolActive: root.toolActive
             chatOpen: root.chatOpen
+            streak: root.okStreak
             lookDir: chatWin.onLeft ? -1 : 1
             wanderEnabled: root.wanderEnabled && !root.minimized
             sleepEnabled: root.sleepEnabled
@@ -1537,6 +2303,11 @@ ShellRoot {
             surface: theme.surface
             outline: theme.outline
             onActivate: root.toggleChat()
+            onHistoryRequest: root.openHistory()
+            onDoubleActivate: {
+                root.chatOpen = true;
+                root.freshSession();
+            }
             onMoved: {
                 if (!root.isNearBar()) {
                     root.lastGoodX = pet.x;
@@ -1591,6 +2362,7 @@ ShellRoot {
         }
 
         ChatPanel {
+            id: chatPanel
             anchors.fill: parent
             theme: theme
             model: chat
@@ -1598,6 +2370,11 @@ ShellRoot {
             hasSession: root.sessionId.length > 0
             authMissing: root.authMissing
             conversations: root.conversations
+            searchResults: root.searchResults
+            searching: root.searching
+            statsRows: root.statsRows
+            statsLoading: statsLoader.running
+            dictating: listenRecorder.running
 
             onSubmit: text => root.send(text)
             onStop: root.stopAgent()
@@ -1606,6 +2383,10 @@ ShellRoot {
             onConfigureAuth: root.openAuthDialog()
             onOpenConversation: id => root.openConversation(id)
             onDeleteConversation: id => root.deleteConversation(id)
+            onExportRequested: root.exportConversation()
+            onStatsRequested: root.loadStats()
+            onSearchHistory: q => root.searchHistory(q)
+            onDictate: root.toggleDictation()
         }
     }
 
@@ -1648,6 +2429,8 @@ ShellRoot {
             theme: theme
             provider: root.authProvider
             model: root.modelName
+            models: root.availableModels
+            modelsLoading: root.modelsLoading
             status: root.authStatus
             detail: root.authDetail
             message: root.authMessage
@@ -1659,6 +2442,7 @@ ShellRoot {
             onSaveKey: key => root.saveAuthKey(key)
             onTerminalLogin: root.startTerminalLogin()
             onCheck: root.checkAuth()
+            onSaveModel: id => root.setModel(id)
             onClose: root.authOpen = false
         }
     }

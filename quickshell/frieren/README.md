@@ -16,6 +16,8 @@ change the system. She also has a real system tray icon with a settings menu.
 - Drop her on the top bar or the bottom dock to minimize her to the tray icon.
 - Click the tray icon (or right-click it) to open the menu.
 - Click the pet without dragging: opens or closes the chat.
+- Double-click the pet: fresh conversation.
+- Right-click the pet: open the chat on the history list.
 - `SUPER + SHIFT + R`: opens the chat from anywhere.
 - `Esc` or `✕`: closes the chat. `＋`: new conversation. `■`: stops the current run.
 - The chat renders Markdown: headings, lists, quotes, inline code, fenced code
@@ -23,8 +25,22 @@ change the system. She also has a real system tray icon with a settings menu.
 - Click and drag over any message to select it. A copy button appears on hover
   for the whole reply, and every code block and command has its own copy icon.
 - `≡` opens the history of past conversations. Click one to reopen it, `✕`
-  deletes it. Scrolling up while she writes no longer drags the view back down;
-  `↓ Latest` returns to the end.
+  deletes it. The search box filters titles instantly and, from 2 characters,
+  also searches message bodies (FTS5), newest first. Scrolling up while
+  she writes no longer drags the view back down; `↓ Latest` returns to the end.
+- Slash commands: `/new`, `/retry`, `/export`, `/stats`, `/model provider/name`,
+  `/agent name`, `/sound on|off`, `/voice on|off|id`, `/volume 10-150`, `/help`.
+  Typing `/` suggests commands (Enter/↑↓/click, Esc hides); `@` suggests
+  `@window`.
+  Prefix a prompt with `@window` to append the focused Hyprland window.
+- Drag files or screenshots into the chat: their `@paths` land in the input box.
+- `◉` next to the send button dictates from the mic (needs a recorder plus a
+  whisper engine, see Voice below); `qs -c frieren ipc call frieren listen`
+  does the same.
+- **Model**: account dialog → **Change** next to the current model. It lists
+  `opencode models` (current provider first), persists in `state.json`.
+- Header `⛁` copies the open conversation as Markdown (also saved under
+  `exports/`); `%` opens the activity panel (last-14-day table, refreshable).
 - Tray → **About** shows the project, the author, the happy pose, the repository
   and the MIT license.
 - The conversation keeps context across restarts: the opencode session ID is
@@ -38,6 +54,11 @@ qs -c frieren ipc call frieren toggle
 qs -c frieren ipc call frieren ask "how much disk is free on /"
 qs -c frieren ipc call frieren fresh
 qs -c frieren ipc call frieren stop
+qs -c frieren ipc call frieren exportmd
+qs -c frieren ipc call frieren stats
+qs -c frieren ipc call frieren backup
+qs -c frieren ipc call frieren listen
+qs -c frieren ipc call frieren say "done, starting from scratch"
 qs -c frieren ipc call frieren hide
 qs -c frieren ipc call frieren auth
 qs -c frieren ipc call frieren about
@@ -46,6 +67,8 @@ qs -c frieren ipc call frieren restore
 qs -c frieren ipc call frieren wander toggle
 qs -c frieren ipc call frieren sleep toggle
 qs -c frieren ipc call frieren blink toggle
+qs -c frieren ipc call frieren sound toggle
+qs -c frieren ipc call frieren voice toggle
 qs -c frieren ipc call frieren log toggle
 qs -c frieren ipc call frieren scale 1.15
 qs -c frieren ipc call frieren resetpos
@@ -63,8 +86,10 @@ DBusMenu:
 - `Open / Close chat`
 - `Stop` (enabled while opencode is busy)
 - `Setup account` when not connected, `Account` when connected
-- `Settings` → `Wander`, `Sleep when idle`, `Blink`, `Activity log`, `Size`
-  (small, medium, large), `Reset position`
+- `Settings` → `Pet` (`Wander`, `Sleep when idle`, `Blink`, `Size`, `Reset
+  position`), `Sound & voice` (`Sound`, `Voice replies`, `Voice` with one
+  radio per downloaded voice, current one checked), `Data` (`Activity log`,
+  `Backup database`)
 - `About` (project, author, happy Frieren, repository and MIT license)
 - `Quit`
 
@@ -119,13 +144,63 @@ opencode run --format json --model opencode-go/deepseek-v4.1-flash \
 - To change the model: edit `modelName` in `shell.qml` and `model` in the agent
   markdown, or ask the agent to use another provider.
 
+## Config file
+
+`~/.config/frieren/settings.json` (created on the first change, watched live).
+Keys: `model` (`provider/name`), `agent`, `wander`, `sleep`, `blink`, `log`,
+`sound`, `voice`, `scale` (0.7 to 1.4). It wins over `state.json`, so
+hand-editing it applies without reopening the pet.
+
+```json
+{
+  "model": "opencode-go/deepseek-v4.1-flash",
+  "agent": "frieren",
+  "sound": true,
+  "voice": false
+}
+```
+
+## Sound and voice
+
+- UI sounds (`assets/sounds/`: pop on send/stop, chime on success, thud on
+  error) play through `paplay`, `aplay` or `ffplay`, whichever exists. Toggle
+  with tray → `Settings` → `Sound` or `/sound off`.
+- A turn longer than 30 s that finishes while the chat is closed sends a
+  `notify-send` ("done in Ns" or the error).
+- Voice replies read the last answer aloud. Backend order: `piper` / `piper-tts` with a downloaded model, then
+  `espeak-ng`, `espeak`, `spd-say`. Install the engine with `paru -S piper-tts`.
+- Voices: `frieren-voice list` shows installed and downloadable ones, all
+  female: `en-jenny` (English GB), `en-lessac` (English US), `es-daniela`
+  (Spanish AR, ideal para rioplatense).
+  `frieren-voice download <id>` fetches it (~60-115 MB), `frieren-voice use
+  <id>` selects it, `/voice <id>` does the same from chat, `/voice on|off`
+  toggles replies, `qs -c frieren ipc call frieren say "text"` speaks once.
+  The choice persists in `settings.json` as `voiceId`.
+- Volume: tray → `Settings` → `Sound & voice` → `Volume` (Low 40 / Medium 80 /
+  Loud 100 / Max 130), `/volume 10-150`, `qs ... ipc call frieren volume 80`,
+  or `settings.json` `volume`. Scaled with ffmpeg (else full volume).
+
+## Helpers
+
+Installed by `install.sh` into `~/.local/bin`:
+
+| Command | What it does |
+| --- | --- |
+| `frieren` | Open the pet / toggle the chat |
+| `frieren-stats [days] [--json]` | Activity dashboard from `frieren.db` |
+| `frieren-ask` | Quick prompt via rofi/wofi/fuzzel/bemenu/dmenu |
+| `frieren-shot` | Screenshot (grim+slurp) straight into the chat |
+| `frieren-backup [backup\|restore latest\|list]` | Hot-copy `frieren.db` into `~/.local/share/frieren/backups/` (prunes to 10, tray action notifies) |
+| `frieren-voice [list\|download <id>\|use <id>]` | Voice catalog: `en-jenny`, `es-davefx`, `es-sharvard` |
+| `frieren-weekly` | AI summary of the last 7 days via opencode |
+
 ## History and activity log
 
 Both live in `~/.local/state/frieren/frieren.db` (SQLite; the `sqlite3` CLI is
 required). The chat talks to it through `sqlite3`, so QML does not need a
 database driver.
 
-History:
+History (FTS5 over titles and message bodies):
 
 - `conversations` keeps the last 60 conversations (`id`, `title`, `created_at`,
   `updated_at`). `messages` keeps up to 150 messages per conversation (`role`,
@@ -158,8 +233,17 @@ Activity log (for a dashboard):
   is recorded with `exit_code = -1` and `error = "stopped"`.
 - Disable the activity rows with tray → `Settings` → `Activity log`, or
   `qs -c frieren ipc call frieren log false`. History keeps working.
-- `events.jsonl` grows with every event and is never rotated; delete it whenever
-  you want to start over. `frieren.db` is independent and safe to keep.
+- `events.jsonl` grows with every event and is rotated once it passes ~5 MB
+  (last 5000 lines are kept); delete it whenever you want to start over.
+  `frieren.db` is independent and safe to keep.
+- State, hook and QML all resolve `${XDG_STATE_HOME:-$HOME/.local/state}/frieren`.
+- Stats CLI (installed by `install.sh` as `~/.local/bin/frieren-stats`):
+
+```bash
+frieren-stats        # last 14 days, totals, top failures, slowest turns
+frieren-stats 30     # last 30 days
+frieren-stats --json # daily view as JSON
+```
 
 ```bash
 # success rate per day
@@ -184,7 +268,9 @@ particles while a tool runs, a jump and sparkles on success, a shake and an
 exclamation bubble on error, floating `z`s while sleeping, and wandering.
 
 `PetSprite.qml` owns the state machine and the timers. The shell passes `busy`,
-`toolActive`, `chatOpen`, `lookDir`, the animation toggles and the scale.
+`toolActive`, `chatOpen`, `lookDir`, `streak`, the animation toggles and the scale.
+Extra moods with real art: `reading` (grimoire, while a read-like tool runs)
+and `celebrate` (arms up plus sparkles, on the third clean turn in a row).
 
 ## Files
 

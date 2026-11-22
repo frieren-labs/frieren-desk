@@ -26,6 +26,15 @@ line="$(head -n 1)"
 # Keep the raw stream even without sqlite3: it can be replayed later.
 printf '%s\n' "$line" >> "$LOG" 2>/dev/null || true
 
+# Rotate the raw log so it does not grow without bound. Keep the last
+# ~5000 lines once it passes ~5 MB. frieren.db is independent and safe.
+if [ -f "$LOG" ]; then
+  size=$(wc -c < "$LOG" 2>/dev/null || echo 0)
+  if [ "${size:-0}" -gt 5242880 ]; then
+    tail -n 5000 "$LOG" > "$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG" || true
+  fi
+fi
+
 command -v sqlite3 >/dev/null 2>&1 || exit 0
 
 # The event is a JSON object; quote it once and let SQLite read the fields with

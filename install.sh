@@ -21,12 +21,19 @@ REF="${FRIEREN_REF:-main}"
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
+STATE_BASE="${XDG_STATE_HOME:-$HOME/.local/state}"
 QS_DIR="$CONFIG/quickshell/frieren"
 OC_DIR="$CONFIG/opencode/agents"
 APP_DIR="$DATA/applications"
 ICON_DIR="$DATA/icons/hicolor/128x128/apps"
-STATE_DIR="$HOME/.local/state/frieren"
+STATE_DIR="$STATE_BASE/frieren"
 LAUNCHER="$BIN/frieren"
+STATS="$BIN/frieren-stats"
+ASKER="$BIN/frieren-ask"
+SHOT="$BIN/frieren-shot"
+BACKUPER="$BIN/frieren-backup"
+WEEKLY="$BIN/frieren-weekly"
+VOICER="$BIN/frieren-voice"
 
 FORCE=0
 UNINSTALL=0
@@ -111,7 +118,8 @@ uninstall() {
   echo "Removing Frieren..."
   qs -c frieren ipc call frieren quit >/dev/null 2>&1 || true
   rm -rf "$QS_DIR"
-  rm -f "$LAUNCHER" "$APP_DIR/frieren.desktop" "$ICON_DIR/frieren.png" \
+  rm -f "$LAUNCHER" "$STATS" "$ASKER" "$SHOT" "$BACKUPER" "$WEEKLY" "$VOICER" \
+    "$APP_DIR/frieren.desktop" "$ICON_DIR/frieren.png" \
     "$OC_DIR/frieren.md"
   refresh_caches
   if [ "$PURGE" -eq 1 ]; then
@@ -162,7 +170,11 @@ locate_sources
 
 for file in quickshell/frieren/shell.qml quickshell/frieren/tray.c \
   quickshell/frieren/hooks/frieren-log.sh \
-  tools/frieren-launch.sh opencode/agents/frieren.md; do
+  quickshell/frieren/tools/frieren-listen.sh \
+  quickshell/frieren/tools/frieren-say.sh \
+  tools/frieren-launch.sh tools/frieren-stats.sh tools/frieren-ask.sh \
+  tools/frieren-shot.sh tools/frieren-backup.sh tools/frieren-weekly.sh \
+  tools/frieren-voice.sh opencode/agents/frieren.md; do
   [ -f "$ROOT/$file" ] || die "missing file in the release: $file"
 done
 
@@ -207,6 +219,25 @@ note "tray: native helper"
 
 install -m 755 "$ROOT/tools/frieren-launch.sh" "$LAUNCHER"
 note "launcher: $LAUNCHER"
+
+install -m 755 "$ROOT/tools/frieren-stats.sh" "$STATS"
+note "stats: $STATS"
+install -m 755 "$ROOT/tools/frieren-ask.sh" "$ASKER"
+note "quick ask: $ASKER"
+install -m 755 "$ROOT/tools/frieren-shot.sh" "$SHOT"
+note "screenshot: $SHOT"
+install -m 755 "$ROOT/tools/frieren-backup.sh" "$BACKUPER"
+note "backup: $BACKUPER"
+install -m 755 "$ROOT/tools/frieren-weekly.sh" "$WEEKLY"
+note "weekly: $WEEKLY"
+install -m 755 "$ROOT/tools/frieren-voice.sh" "$VOICER"
+note "voices: $VOICER"
+
+for helper in frieren-listen.sh frieren-say.sh; do
+  install -m 755 "$ROOT/quickshell/frieren/tools/$helper" \
+    "$QS_DIR/tools/$helper"
+done
+note "voice helpers: $QS_DIR/tools/"
 
 install -m 644 "$ROOT/quickshell/frieren/assets/frieren-icon.png" \
   "$ICON_DIR/frieren.png"

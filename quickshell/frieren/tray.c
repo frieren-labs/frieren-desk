@@ -43,6 +43,21 @@
 #define ID_AUTH 17
 #define ID_LOG 18
 #define ID_ABOUT 19
+#define ID_SOUND 20
+#define ID_VOICE 21
+#define ID_BACKUP 22
+#define ID_PET 23
+#define ID_SOUND_MENU 24
+#define ID_DATA 25
+#define ID_VOICE_MENU 26
+#define ID_VOLUME_MENU 27
+#define ID_VOICE_FIRST 30
+#define ID_VOICE_LAST 49
+#define ID_VOICE_MAX (ID_VOICE_LAST - ID_VOICE_FIRST + 1)
+#define ID_VOL_LOW 50
+#define ID_VOL_MED 51
+#define ID_VOL_LOUD 52
+#define ID_VOL_MAX 53
 
 typedef struct {
     gboolean minimized;
@@ -50,6 +65,10 @@ typedef struct {
     gboolean sleep;
     gboolean blink;
     gboolean log;
+    gboolean sound;
+    gboolean voice;
+    gchar *voice_id;
+    gint volume;
     gboolean auth;
     gboolean busy;
     gboolean chatOpen;
@@ -71,9 +90,11 @@ typedef struct {
     GDBusNodeInfo *sni_info;
     GDBusNodeInfo *menu_info;
     GFileMonitor *monitor;
+    GFileMonitor *voices_monitor;
     guint poll_id;
     guint register_id;
     gchar *state_path;
+    gchar *voices_path;
     gchar *icon_name;
     gchar *qs_bin;
     IconBuf icons[3];
@@ -199,6 +220,77 @@ static double json_number(const gchar *text, const gchar *key, double fallback) 
     return end == p ? fallback : value;
 }
 
+static gchar *json_string(const gchar *text, const gchar *key, const gchar *fallback) {
+    gchar *pattern = g_strdup_printf("\"%s\"", key);
+    const gchar *p = strstr(text, pattern);
+    g_free(pattern);
+    if (!p) return g_strdup(fallback ? fallback : "");
+    p += strlen(key) + 2;
+    while (*p && *p != ':') p++;
+    if (*p == ':') p++;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+    if (*p != '"') return g_strdup(fallback ? fallback : "");
+    p++;
+    GString *out = g_string_new(NULL);
+    while (*p && *p != '"') {
+        if (*p == '\\' && *(p + 1)) {
+            p++;
+            g_string_append_c(out, *p ? *p : 0);
+        } else {
+            g_string_append_c(out, *p);
+        }
+        if (*p) p++;
+    }
+    return g_string_free(out, FALSE);
+}
+
+// Installed voices: stems of voices/*.onnx with a sibling .json, sorted,
+// capped at ID_VOICE_MAX. The legacy en.onnx counts as "en.onnx".
+static gint cmp_str(gconstpointer a, gconstpointer b) {
+    return g_strcmp0(*(gchar *const *)a, *(gchar *const *)b);
+}
+
+static GPtrArray *list_voices(App *app) {
+    GPtrArray *names = g_ptr_array_new_with_free_func(g_free);
+    GDir *dir = app->voices_path ? g_dir_open(app->voices_path, 0, NULL) : NULL;
+    if (dir) {
+        const gchar *entry = NULL;
+        while ((entry = g_dir_read_name(dir)) != NULL) {
+            gsize len = strlen(entry);
+            if (len > 5 && g_str_has_suffix(entry, ".onnx")) {
+                gchar *stem = g_strndup(entry, len - 5);
+                gchar *json = g_strconcat(stem, ".onnx.json", NULL);
+                gchar *full = g_build_filename(app->voices_path, json, NULL);
+                gboolean ok = g_file_test(full, G_FILE_TEST_IS_REGULAR);
+                g_free(json);
+                g_free(full);
+                if (ok) g_ptr_array_add(names, stem);
+                else g_free(stem);
+            }
+        }
+        g_dir_close(dir);
+    }
+    if (app->voices_path) {
+        gchar *legacy = g_build_filename(app->voices_path, "..", "en.onnx", NULL);
+        if (g_file_test(legacy, G_FILE_TEST_IS_REGULAR))
+            g_ptr_array_add(names, g_strdup("en.onnx"));
+        g_free(legacy);
+    }
+    g_ptr_array_sort(names, cmp_str);
+    while (names->len > ID_VOICE_MAX)
+        g_ptr_array_remove_index(names, names->len - 1);
+    return names;
+}
+
+static gchar *voice_at(App *app, gint index) {
+    GPtrArray *names = list_voices(app);
+    gchar *out = NULL;
+    if (index >= 0 && (gsize)index < names->len)
+        out = g_strdup(g_ptr_array_index(names, index));
+    g_ptr_array_unref(names);
+    return out;
+}
+
 static void read_state(App *app) {
     gchar *data = NULL;
     if (!g_file_get_contents(app->state_path, &data, NULL, NULL)) return;
@@ -207,6 +299,12 @@ static void read_state(App *app) {
     app->state.sleep = json_bool(data, "sleep", app->state.sleep);
     app->state.blink = json_bool(data, "blink", app->state.blink);
     app->state.log = json_bool(data, "log", app->state.log);
+    app->state.sound = json_bool(data, "sound", app->state.sound);
+    app->state.voice = json_bool(data, "voice", app->state.voice);
+    gchar *vid = json_string(data, "voiceId", app->state.voice_id);
+    g_free(app->state.voice_id);
+    app->state.voice_id = vid;
+    app->state.volume = (gint)json_number(data, "volume", app->state.volume);
     app->state.auth = json_bool(data, "auth", app->state.auth);
     app->state.busy = json_bool(data, "busy", app->state.busy);
     app->state.chatOpen = json_bool(data, "chatOpen", app->state.chatOpen);
@@ -244,6 +342,14 @@ static GVariant *item_props(const gchar *label, gboolean enabled,
 
 static GVariant *props_for_id(App *app, gint32 id) {
     const State *s = &app->state;
+    if (id >= ID_VOICE_FIRST && id <= ID_VOICE_LAST) {
+        gchar *stem = voice_at(app, id - ID_VOICE_FIRST);
+        if (!stem) return empty_props();
+        gboolean current = s->voice_id && g_strcmp0(stem, s->voice_id) == 0;
+        GVariant *props = item_props(stem, TRUE, NULL, NULL, "radio", current ? 1 : 0);
+        g_free(stem);
+        return props;
+    }
     switch (id) {
         case ID_TOGGLE_PET:
             return item_props(s->minimized ? "Show pet" : "Hide pet", TRUE, NULL, NULL, NULL, 0);
@@ -256,6 +362,24 @@ static GVariant *props_for_id(App *app, gint32 id) {
             return item_props(NULL, TRUE, "separator", NULL, NULL, 0);
         case ID_SETTINGS:
             return item_props("Settings", TRUE, "submenu", "submenu", NULL, 0);
+        case ID_PET:
+            return item_props("Pet", TRUE, "submenu", "submenu", NULL, 0);
+        case ID_SOUND_MENU:
+            return item_props("Sound & voice", TRUE, "submenu", "submenu", NULL, 0);
+        case ID_DATA:
+            return item_props("Data", TRUE, "submenu", "submenu", NULL, 0);
+        case ID_VOICE_MENU:
+            return item_props("Voice", TRUE, "submenu", "submenu", NULL, 0);
+        case ID_VOLUME_MENU:
+            return item_props("Volume", TRUE, "submenu", "submenu", NULL, 0);
+        case ID_VOL_LOW:
+            return item_props("Low (40%)", TRUE, NULL, NULL, "radio", s->volume == 40 ? 1 : 0);
+        case ID_VOL_MED:
+            return item_props("Medium (80%)", TRUE, NULL, NULL, "radio", s->volume == 80 ? 1 : 0);
+        case ID_VOL_LOUD:
+            return item_props("Loud (100%)", TRUE, NULL, NULL, "radio", s->volume == 100 ? 1 : 0);
+        case ID_VOL_MAX:
+            return item_props("Max (130%)", TRUE, NULL, NULL, "radio", s->volume == 130 ? 1 : 0);
         case ID_WANDER:
             return item_props("Wander", TRUE, NULL, NULL, "checkmark", s->wander ? 1 : 0);
         case ID_SLEEP:
@@ -264,6 +388,12 @@ static GVariant *props_for_id(App *app, gint32 id) {
             return item_props("Blink", TRUE, NULL, NULL, "checkmark", s->blink ? 1 : 0);
         case ID_LOG:
             return item_props("Activity log", TRUE, NULL, NULL, "checkmark", s->log ? 1 : 0);
+        case ID_SOUND:
+            return item_props("Sound", TRUE, NULL, NULL, "checkmark", s->sound ? 1 : 0);
+        case ID_VOICE:
+            return item_props("Voice replies", TRUE, NULL, NULL, "checkmark", s->voice ? 1 : 0);
+        case ID_BACKUP:
+            return item_props("Backup database", TRUE, NULL, NULL, NULL, 0);
         case ID_SIZE:
             return item_props("Size", TRUE, "submenu", "submenu", NULL, 0);
         case ID_SMALL:
@@ -312,7 +442,19 @@ static GVariant *build_node(App *app, gint32 id) {
         ID_AUTH, ID_SETTINGS, ID_ABOUT, ID_SEP_2, ID_QUIT
     };
     static const gint32 settings_children[] = {
-        ID_WANDER, ID_SLEEP, ID_BLINK, ID_LOG, ID_SIZE, ID_RESET
+        ID_PET, ID_SOUND_MENU, ID_DATA
+    };
+    static const gint32 pet_children[] = {
+        ID_WANDER, ID_SLEEP, ID_BLINK, ID_SIZE, ID_RESET
+    };
+    static const gint32 sound_children[] = {
+        ID_SOUND, ID_VOICE, ID_VOICE_MENU, ID_VOLUME_MENU
+    };
+    static const gint32 volume_children[] = {
+        ID_VOL_LOW, ID_VOL_MED, ID_VOL_LOUD, ID_VOL_MAX
+    };
+    static const gint32 data_children[] = {
+        ID_LOG, ID_BACKUP
     };
     static const gint32 size_children[] = {ID_SMALL, ID_MEDIUM, ID_LARGE};
 
@@ -330,6 +472,44 @@ static GVariant *build_node(App *app, gint32 id) {
         return make_node(id, props_for_id(app, id),
                          children_of(app, settings_children,
                                      G_N_ELEMENTS(settings_children)));
+    }
+    if (id == ID_PET) {
+        return make_node(id, props_for_id(app, id),
+                         children_of(app, pet_children,
+                                     G_N_ELEMENTS(pet_children)));
+    }
+    if (id == ID_SOUND_MENU) {
+        return make_node(id, props_for_id(app, id),
+                         children_of(app, sound_children,
+                                     G_N_ELEMENTS(sound_children)));
+    }
+    if (id == ID_VOLUME_MENU) {
+        return make_node(id, props_for_id(app, id),
+                         children_of(app, volume_children,
+                                     G_N_ELEMENTS(volume_children)));
+    }
+    if (id == ID_DATA) {
+        return make_node(id, props_for_id(app, id),
+                         children_of(app, data_children,
+                                     G_N_ELEMENTS(data_children)));
+    }
+    if (id == ID_VOICE_MENU) {
+        GPtrArray *names = list_voices(app);
+        GVariantBuilder builder;
+        g_variant_builder_init(&builder, G_VARIANT_TYPE("av"));
+        if (names->len == 0) {
+            GVariant *hint = item_props("No voices yet: frieren-voice list",
+                                        FALSE, NULL, NULL, NULL, 0);
+            g_variant_builder_add(&builder, "v",
+                                  make_node(ID_VOICE_FIRST, hint, empty_children()));
+        } else {
+            for (gsize i = 0; i < names->len; i++) {
+                gint32 vid = ID_VOICE_FIRST + (gint32)i;
+                g_variant_builder_add(&builder, "v", build_node(app, vid));
+            }
+        }
+        g_ptr_array_unref(names);
+        return make_node(id, props_for_id(app, id), g_variant_builder_end(&builder));
     }
     if (id == ID_SIZE) {
         return make_node(id, props_for_id(app, id),
@@ -443,15 +623,28 @@ static void emit_state_changed(App *app) {
 
     static const gint32 dynamic_ids[] = {
         ID_TOGGLE_PET, ID_CHAT, ID_STOP, ID_AUTH,
-        ID_WANDER, ID_SLEEP, ID_BLINK, ID_LOG,
-        ID_SMALL, ID_MEDIUM, ID_LARGE
+        ID_WANDER, ID_SLEEP, ID_BLINK, ID_SOUND, ID_VOICE, ID_LOG,
+        ID_SMALL, ID_MEDIUM, ID_LARGE,
+        ID_VOL_LOW, ID_VOL_MED, ID_VOL_LOUD, ID_VOL_MAX
     };
+    GArray *voice_ids = g_array_new(FALSE, FALSE, sizeof(gint32));
+    GPtrArray *names = list_voices(app);
+    for (gsize i = 0; i < names->len; i++) {
+        gint32 vid = ID_VOICE_FIRST + (gint32)i;
+        g_array_append_val(voice_ids, vid);
+    }
+    g_ptr_array_unref(names);
     GVariantBuilder updated;
     g_variant_builder_init(&updated, G_VARIANT_TYPE("a(ia{sv})"));
     for (gsize i = 0; i < G_N_ELEMENTS(dynamic_ids); i++) {
         g_variant_builder_add(&updated, "(i@a{sv})", dynamic_ids[i],
                               props_for_id(app, dynamic_ids[i]));
     }
+    for (guint i = 0; i < voice_ids->len; i++) {
+        gint32 vid = g_array_index(voice_ids, gint32, i);
+        g_variant_builder_add(&updated, "(i@a{sv})", vid, props_for_id(app, vid));
+    }
+    g_array_unref(voice_ids);
     GVariantBuilder removed;
     g_variant_builder_init(&removed, G_VARIANT_TYPE("a(ias)"));
     g_dbus_connection_emit_signal(
@@ -495,6 +688,18 @@ static void on_state_changed(GFileMonitor *monitor, GFile *file,
     poll_state(user_data);
 }
 
+static void on_voices_changed(GFileMonitor *monitor, GFile *file,
+                              GFile *other_file, GFileMonitorEvent event_type,
+                              gpointer user_data) {
+    (void)monitor;
+    (void)file;
+    (void)other_file;
+    (void)event_type;
+    App *app = user_data;
+    // A new download changes the Voice submenu: refresh the layout.
+    emit_state_changed(app);
+}
+
 static void on_menu_method(GDBusConnection *connection,
                            const gchar *sender,
                            const gchar *object_path,
@@ -519,7 +724,10 @@ static void on_menu_method(GDBusConnection *connection,
 
         read_state(app);
         GVariant *node;
-        if (parent == 0 || parent == ID_SETTINGS || parent == ID_SIZE) {
+        if (parent == 0 || parent == ID_SETTINGS || parent == ID_PET
+                || parent == ID_SOUND_MENU || parent == ID_DATA
+                || parent == ID_VOICE_MENU || parent == ID_VOLUME_MENU
+                || parent == ID_SIZE) {
             node = build_node(app, parent);
         } else {
             node = make_node(parent, empty_props(), empty_children());
@@ -652,6 +860,27 @@ static void activate(App *app, gint32 id) {
         case ID_LOG:
             spawn_ipc(app, "log", "toggle");
             break;
+        case ID_SOUND:
+            spawn_ipc(app, "sound", "toggle");
+            break;
+        case ID_VOICE:
+            spawn_ipc(app, "voice", "toggle");
+            break;
+        case ID_VOL_LOW:
+            spawn_ipc(app, "volume", "40");
+            break;
+        case ID_VOL_MED:
+            spawn_ipc(app, "volume", "80");
+            break;
+        case ID_VOL_LOUD:
+            spawn_ipc(app, "volume", "100");
+            break;
+        case ID_VOL_MAX:
+            spawn_ipc(app, "volume", "130");
+            break;
+        case ID_BACKUP:
+            spawn_ipc(app, "backup", NULL);
+            break;
         case ID_SMALL:
             spawn_ipc(app, "scale", "0.85");
             break;
@@ -674,6 +903,13 @@ static void activate(App *app, gint32 id) {
             spawn_ipc(app, "quit", NULL);
             break;
         default:
+            if (id >= ID_VOICE_FIRST && id <= ID_VOICE_LAST) {
+                gchar *stem = voice_at(app, id - ID_VOICE_FIRST);
+                if (stem) {
+                    spawn_ipc(app, "voiceid", stem);
+                    g_free(stem);
+                }
+            }
             break;
     }
 }
@@ -748,6 +984,7 @@ static gboolean load_icon(IconBuf *icon, const gchar *path, gint32 size) {
 
 static void free_app(App *app) {
     if (app->monitor) g_object_unref(app->monitor);
+    if (app->voices_monitor) g_object_unref(app->voices_monitor);
     if (app->sni_reg) g_dbus_connection_unregister_object(app->bus, app->sni_reg);
     if (app->menu_reg) g_dbus_connection_unregister_object(app->bus, app->menu_reg);
     if (app->owner_id) g_bus_unown_name(app->owner_id);
@@ -757,14 +994,16 @@ static void free_app(App *app) {
     if (app->loop) g_main_loop_unref(app->loop);
     for (gsize i = 0; i < G_N_ELEMENTS(app->icons); i++) g_free(app->icons[i].data);
     g_free(app->state_path);
+    g_free(app->voices_path);
+    g_free(app->state.voice_id);
     g_free(app->icon_name);
     g_free(app->qs_bin);
 }
 
 int main(int argc, char **argv) {
-    if (argc < 6) {
+    if (argc < 7) {
         g_printerr("usage: frieren-tray ICON.png ICON-128.argb ICON-64.argb "
-                   "ICON-32.argb STATE.json\n");
+                   "ICON-32.argb STATE.json VOICES.dir\n");
         return 2;
     }
 
@@ -778,12 +1017,16 @@ int main(int argc, char **argv) {
     app.loop = g_main_loop_new(NULL, FALSE);
     app.icon_name = g_strdup(argv[1]);
     app.state_path = g_strdup(argv[5]);
+    app.voices_path = g_strdup(argv[6]);
     app.qs_bin = g_find_program_in_path("qs");
     if (!app.qs_bin) app.qs_bin = g_strdup("/usr/bin/qs");
     app.state.wander = TRUE;
     app.state.sleep = TRUE;
     app.state.blink = TRUE;
     app.state.log = TRUE;
+    app.state.sound = TRUE;
+    app.state.voice = FALSE;
+    app.state.volume = 100;
     app.state.scale = 1.0;
     app.revision = 1;
 
@@ -796,6 +1039,7 @@ int main(int argc, char **argv) {
         g_mkdir_with_parents(state_dir, 0755);
         g_free(state_dir);
     }
+    g_mkdir_with_parents(app.voices_path, 0755);
     read_state(&app);
     app.last_mtime = state_mtime(&app);
 
@@ -856,6 +1100,14 @@ int main(int argc, char **argv) {
         g_signal_connect(app.monitor, "changed", G_CALLBACK(on_state_changed), &app);
     } else {
         app.poll_id = g_timeout_add(500, poll_state, &app);
+    }
+
+    GFile *voices_dir = g_file_new_for_path(app.voices_path);
+    app.voices_monitor = g_file_monitor_directory(voices_dir, G_FILE_MONITOR_NONE, NULL, NULL);
+    g_object_unref(voices_dir);
+    if (app.voices_monitor) {
+        g_signal_connect(app.voices_monitor, "changed",
+                         G_CALLBACK(on_voices_changed), &app);
     }
 
     app.register_id = g_timeout_add_seconds(30, register_with_watcher, &app);

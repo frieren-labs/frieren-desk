@@ -6,6 +6,10 @@ Item {
     property var theme
     property string provider: ""
     property string model: ""
+    property var models: []
+    property bool modelsLoading: false
+    property string modelFilter: ""
+    property bool picking: false
     // unknown | checking | connected | missing | error
     property string status: "unknown"
     property string detail: ""
@@ -18,6 +22,7 @@ Item {
     signal saveKey(string key)
     signal terminalLogin()
     signal check()
+    signal saveModel(string id)
     signal close()
 
     readonly property bool connected: status === "connected"
@@ -67,6 +72,13 @@ Item {
 
     function clearKey() {
         keyInput.text = "";
+    }
+
+    function filteredModels() {
+        const list = Array.isArray(dialog.models) ? dialog.models : [];
+        const q = dialog.modelFilter.trim().toLowerCase();
+        if (q.length === 0) return list.slice(0, 50);
+        return list.filter(m => String(m).toLowerCase().indexOf(q) >= 0).slice(0, 50);
     }
 
     Shortcut {
@@ -180,15 +192,139 @@ Item {
                 }
             }
 
-            // ---------- account info ----------
-            Text {
+            // ---------- model picker ----------
+            Item {
                 width: parent.width
-                text: "Provider: " + dialog.provider + "   Model: " + dialog.model
-                color: dialog.fgDim
-                opacity: 0.85
-                font.family: dialog.fontFamily
-                font.pixelSize: 10
-                elide: Text.ElideRight
+                height: modelColumn.height
+
+                Column {
+                    id: modelColumn
+                    width: parent.width
+                    spacing: 6
+
+                    Row {
+                        width: parent.width
+                        spacing: 8
+
+                        Text {
+                            width: parent.width - changeLink.width - 8
+                            text: "Model: " + dialog.model
+                            color: dialog.fgDim
+                            opacity: 0.85
+                            font.family: dialog.fontFamily
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            id: changeLink
+                            text: dialog.picking ? "Hide" : (dialog.modelsLoading ? "Loading..." : "Change")
+                            color: dialog.accent
+                            opacity: dialog.modelsLoading ? 0.4 : 1
+                            font.family: dialog.fontFamily
+                            font.pixelSize: 10
+
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -6
+                                enabled: !dialog.modelsLoading
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: dialog.picking = !dialog.picking
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 32
+                        radius: 8
+                        visible: dialog.picking
+                        color: dialog.surfaceHigh
+                        border.color: modelFilterInput.activeFocus ? dialog.accent : dialog.line
+                        border.width: 1
+
+                        TextInput {
+                            id: modelFilterInput
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            verticalAlignment: TextInput.AlignVCenter
+                            color: dialog.fg
+                            font.family: dialog.fontFamily
+                            font.pixelSize: 11
+                            selectByMouse: true
+                            clip: true
+                            text: dialog.modelFilter
+                            onTextChanged: dialog.modelFilter = text
+
+                            Text {
+                                anchors.fill: parent
+                                visible: modelFilterInput.text.length === 0
+                                text: "Filter, e.g. deepseek or kimi..."
+                                color: dialog.fgDim
+                                opacity: 0.6
+                                font.family: dialog.fontFamily
+                                font.pixelSize: 11
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
+
+                    ListView {
+                        width: parent.width
+                        height: Math.min(168, count * 28)
+                        visible: dialog.picking && filteredCount > 0
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        model: dialog.filteredModels()
+                        property int filteredCount: dialog.filteredModels().length
+
+                        delegate: Rectangle {
+                            width: ListView.view ? ListView.view.width : 380
+                            height: 28
+                            radius: 6
+                            color: rowHover.hovered ? dialog.surfaceHigh : "transparent"
+
+                            HoverHandler {
+                                id: rowHover
+                            }
+
+                            Text {
+                                x: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - 16
+                                text: modelData
+                                color: modelData === dialog.model ? dialog.accent : dialog.fg
+                                font.family: dialog.fontFamily
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    dialog.saveModel(modelData);
+                                    dialog.picking = false;
+                                    dialog.modelFilter = "";
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        visible: dialog.picking && dialog.filteredModels().length === 0 && !dialog.modelsLoading
+                        text: dialog.models.length === 0
+                            ? "No models listed. Check opencode is installed."
+                            : "No match. Clear the filter or type provider/name for /model."
+                        color: dialog.fgDim
+                        opacity: 0.75
+                        font.family: dialog.fontFamily
+                        font.pixelSize: 10
+                        wrapMode: Text.Wrap
+                    }
+                }
             }
 
             // ---------- API key ----------

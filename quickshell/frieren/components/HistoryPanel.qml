@@ -7,10 +7,27 @@ Item {
 
     property var theme
     property var conversations: []
+    property var searchResults: []
+    property bool searching: false
     property bool busy: false
+    property string query: ""
 
     signal open(string id)
     signal remove(string id)
+    signal search(string q)
+
+    readonly property bool deepActive: root.query.trim().length >= 2
+
+    Timer {
+        id: searchDebounce
+        interval: 350
+        repeat: false
+        onTriggered: root.search(root.query)
+    }
+
+    function queueSearch() {
+        searchDebounce.restart();
+    }
 
     readonly property string fontFamily: theme ? theme.fontFamily : "sans-serif"
     readonly property color fg: theme ? theme.text : "#e6e0e9"
@@ -20,7 +37,14 @@ Item {
     readonly property color line: theme ? theme.outline : "#49454e"
     readonly property color danger: theme ? theme.danger : "#f2b8b5"
 
-    readonly property var entries: root.sorted()
+    readonly property var entries: root.deepActive ? root.searchResults : root.filtered()
+
+    function filtered() {
+        const list = root.sorted();
+        const q = root.query.trim().toLowerCase();
+        if (q.length === 0) return list;
+        return list.filter(conv => (conv.title || "").toLowerCase().indexOf(q) >= 0);
+    }
 
     function sorted() {
         const list = (root.conversations || []).slice();
@@ -55,10 +79,12 @@ Item {
     Text {
         anchors.centerIn: parent
         width: parent.width - 40
-        visible: root.entries.length === 0
+        visible: root.entries.length === 0 && !root.searching
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.Wrap
-        text: "No history yet.\nAsk something and it will show up here."
+        text: root.deepActive
+            ? "No matches in titles or messages."
+            : "No history yet.\nAsk something and it will show up here."
         color: root.fgDim
         opacity: 0.65
         font.family: root.fontFamily
@@ -66,8 +92,50 @@ Item {
         lineHeight: 1.25
     }
 
+    // Search box: filters the 60 cached conversations by title.
+    Rectangle {
+        width: parent.width
+        height: 30
+        radius: 9
+        color: "transparent"
+        border.color: root.line
+        border.width: 1
+        visible: root.conversations.length > 0 || root.query.length > 0
+
+        TextInput {
+            id: searchInput
+            anchors.fill: parent
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            verticalAlignment: TextInput.AlignVCenter
+            color: root.fg
+            font.family: root.fontFamily
+            font.pixelSize: 11
+            selectByMouse: true
+            clip: true
+            text: root.query
+            onTextChanged: {
+                root.query = text;
+                root.queueSearch();
+            }
+
+            Text {
+                anchors.fill: parent
+                visible: searchInput.text.length === 0
+                text: "Search titles and messages…"
+                color: root.fgDim
+                opacity: 0.6
+                font.family: root.fontFamily
+                font.pixelSize: 11
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+    }
+
     ListView {
-        anchors.fill: parent
+        y: 36
+        width: parent.width
+        height: parent.height - 36
         visible: root.entries.length > 0
         clip: true
         spacing: 4
@@ -162,7 +230,7 @@ Item {
         anchors.right: parent.right
         anchors.topMargin: -2
         visible: root.entries.length > 0
-        text: root.busy ? "busy…" : ""
+        text: root.searching ? "searching…" : (root.busy ? "busy…" : "")
         color: root.line
         font.family: root.fontFamily
         font.pixelSize: 9

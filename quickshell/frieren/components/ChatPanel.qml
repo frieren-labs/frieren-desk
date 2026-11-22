@@ -7,20 +7,104 @@ Item {
 
     property var theme
     property alias model: list.model
+
+    function appendInput(text) {
+        text = String(text || "");
+        if (text.length === 0) return;
+        const sep = input.text.length > 0 && !/\s$/.test(input.text) ? " " : "";
+        input.text += sep + text;
+        input.cursorPosition = input.text.length;
+        input.forceActiveFocus();
+    }
+
+    // Slash/@ completion: matches while typing the first word.
+    function slashMatches() {
+        const t = input.text;
+        if (t.length === 0 || (t[0] !== "/" && t[0] !== "@")) return [];
+        if (/\s/.test(t)) return [];
+        const pool = t[0] === "/" ? panel.slashCommands : panel.atCommands;
+        const needle = t.toLowerCase();
+        return pool.filter(c => c.cmd.toLowerCase().indexOf(needle) === 0);
+    }
+
+    function slashVisible() {
+        return !panel.slashDismissed && !panel.busy && panel.slashMatches().length > 0;
+    }
+
+    function completeSlash(cmd) {
+        input.text = cmd + " ";
+        input.cursorPosition = input.text.length;
+        input.forceActiveFocus();
+    }
+
+    // Drop files or screenshots: inserts @paths for opencode to read.
+    function dropPaths(urls) {
+        const parts = [];
+        for (let i = 0; i < urls.length; i += 1) {
+            let p = decodeURIComponent(String(urls[i] || ""));
+            if (p.indexOf("file://") === 0) p = p.slice(7);
+            if (p.length === 0) continue;
+            parts.push(p.indexOf(" ") >= 0 ? '@"' + p + '"' : "@" + p);
+        }
+        if (parts.length > 0) panel.appendInput(parts.join(" ") + " ");
+    }
+
+    DropArea {
+        anchors.fill: parent
+        onDropped: drop => {
+            if (drop.hasUrls) {
+                panel.dropPaths(drop.urls);
+                drop.accept();
+            }
+        }
+        onEntered: drop => {
+            if (drop.hasUrls) inputBox.border.color = panel.accent;
+        }
+        onExited: inputBox.border.color = input.activeFocus ? panel.accent : panel.line
+    }
     property bool busy: false
     property bool hasSession: false
     property bool authMissing: false
     property var conversations: []
+    property var searchResults: []
+    property bool searching: false
+    property var statsRows: []
+    property bool statsLoading: false
 
     property bool historyOpen: false
+    property bool historyFirst: false
+    property bool statsOpen: false
+    property bool dictating: false
+    property bool slashDismissed: false
+    property int slashIndex: 0
+
+    readonly property var slashCommands: [
+        { cmd: "/new", desc: "fresh conversation" },
+        { cmd: "/retry", desc: "resend last prompt" },
+        { cmd: "/export", desc: "copy conversation as Markdown" },
+        { cmd: "/stats", desc: "open activity panel" },
+        { cmd: "/model", desc: "switch model: /model provider/name" },
+        { cmd: "/agent", desc: "switch agent: /agent name" },
+        { cmd: "/sound", desc: "UI sounds: /sound on|off" },
+        { cmd: "/voice", desc: "spoken replies: /voice on|off|id" },
+        { cmd: "/volume", desc: "voice volume: /volume 10-150" },
+        { cmd: "/help", desc: "list commands" }
+    ]
+    readonly property var atCommands: [
+        { cmd: "@window", desc: "include focused Hyprland window" }
+    ]
 
     signal submit(string text)
     signal stop()
     signal fresh()
     signal dismiss()
+    signal dictate()
     signal configureAuth()
     signal openConversation(string id)
     signal deleteConversation(string id)
+    signal exportRequested()
+    signal statsRequested()
+    signal searchHistory(string q)
 
     readonly property string fontFamily: theme ? theme.fontFamily : "sans-serif"
     readonly property color fg: theme ? theme.text : "#e6e0e9"
@@ -81,9 +165,11 @@ Item {
                         Text {
                             text: panel.busy
                                 ? "thinking…"
-                                : panel.historyOpen
-                                    ? "history"
-                                    : (panel.hasSession ? "active conversation" : "new conversation")
+                                : panel.statsOpen
+                                    ? "activity"
+                                    : panel.historyOpen
+                                        ? "history"
+                                        : (panel.hasSession ? "active conversation" : "new conversation")
                             color: panel.busy ? accent : fgDim
                             opacity: 0.85
                             font.family: fontFamily
@@ -101,7 +187,31 @@ Item {
                         theme: panel.theme
                         glyph: panel.historyOpen ? "‹" : "≡"
                         tooltip: panel.historyOpen ? "Back to chat" : "History"
-                        onActivated: panel.historyOpen = !panel.historyOpen
+                        onActivated: {
+                            panel.historyOpen = !panel.historyOpen;
+                            if (panel.historyOpen) panel.statsOpen = false;
+                        }
+                    }
+
+                    IconButton {
+                        theme: panel.theme
+                        glyph: "⛁"
+                        tooltip: "Copy conversation as Markdown"
+                        onActivated: panel.exportRequested()
+                    }
+
+                    IconButton {
+                        theme: panel.theme
+                        glyph: "%"
+                        tooltip: panel.statsOpen ? "Back to chat" : "Activity stats"
+                        onActivated: {
+                            panel.statsOpen = !panel.statsOpen;
+                            if (panel.statsOpen) {
+                                panel.historyOpen = false;
+                                if (panel.statsRows.length === 0 && !panel.statsLoading)
+                                    panel.statsRequested();
+                            }
+                        }
                     }
 
                     IconButton {
@@ -110,6 +220,7 @@ Item {
                         tooltip: "New conversation"
                         onActivated: {
                             panel.historyOpen = false;
+                            panel.statsOpen = false;
                             panel.fresh();
                         }
                     }
@@ -176,7 +287,7 @@ Item {
                 ListView {
                     id: list
                     anchors.fill: parent
-                    visible: !panel.historyOpen
+                    visible: !panel.historyOpen && !panel.statsOpen
                     clip: true
                     spacing: 12
                     boundsBehavior: Flickable.StopAtBounds
@@ -224,9 +335,11 @@ Item {
 
                 HistoryPanel {
                     anchors.fill: parent
-                    visible: panel.historyOpen
+                    visible: panel.historyOpen && !panel.statsOpen
                     theme: panel.theme
                     conversations: panel.conversations
+                    searchResults: panel.searchResults
+                    searching: panel.searching
                     busy: panel.busy
 
                     onOpen: id => {
@@ -234,11 +347,22 @@ Item {
                         panel.openConversation(id);
                     }
                     onRemove: id => panel.deleteConversation(id)
+                    onSearch: q => panel.searchHistory(q)
+                }
+
+                StatsPanel {
+                    anchors.fill: parent
+                    visible: panel.statsOpen
+                    theme: panel.theme
+                    rows: panel.statsRows
+                    loading: panel.statsLoading
+
+                    onRefresh: panel.statsRequested()
                 }
 
                 // Shown only when the view is released from the end.
                 Rectangle {
-                    visible: !list.follow && !panel.historyOpen && list.count > 0
+                    visible: !list.follow && !panel.historyOpen && !panel.statsOpen && list.count > 0
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 8
@@ -282,7 +406,7 @@ Item {
                     id: input
                     anchors.left: parent.left
                     anchors.leftMargin: 12
-                    anchors.right: sendBtn.left
+                    anchors.right: micBtn.left
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     color: fg
@@ -304,7 +428,14 @@ Item {
 
                     function commit() {
                         if (text.trim().length === 0) return;
+                        if (panel.slashVisible()) {
+                            const m = panel.slashMatches();
+                            panel.completeSlash(m[Math.min(panel.slashIndex, m.length - 1)].cmd);
+                            return;
+                        }
                         panel.historyOpen = false;
+                        panel.historyFirst = false;
+                        panel.statsOpen = false;
                         list.follow = true;
                         panel.submit(text.trim());
                         text = "";
@@ -312,7 +443,61 @@ Item {
 
                     onAccepted: commit()
 
-                    Keys.onEscapePressed: panel.dismiss()
+                    onTextChanged: {
+                        panel.slashIndex = 0;
+                        if (text.length === 0 || (text[0] !== "/" && text[0] !== "@"))
+                            panel.slashDismissed = false;
+                    }
+
+                    Keys.onUpPressed: event => {
+                        const m = panel.slashMatches();
+                        if (panel.slashVisible() && m.length > 0) {
+                            panel.slashIndex = (panel.slashIndex - 1 + m.length) % m.length;
+                            event.accepted = true;
+                        }
+                    }
+
+                    Keys.onDownPressed: event => {
+                        const m = panel.slashMatches();
+                        if (panel.slashVisible() && m.length > 0) {
+                            panel.slashIndex = (panel.slashIndex + 1) % m.length;
+                            event.accepted = true;
+                        }
+                    }
+
+                    Keys.onEscapePressed: {
+                        if (panel.slashVisible()) panel.slashDismissed = true;
+                        else panel.dismiss();
+                    }
+                }
+
+                Rectangle {
+                    id: micBtn
+                    anchors.right: sendBtn.left
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 32
+                    height: 32
+                    radius: 16
+                    color: panel.dictating ? (theme ? theme.danger : "#f2b8b5") : "transparent"
+                    border.color: panel.dictating ? "transparent" : (theme ? theme.outline : "#49454e")
+                    border.width: 1
+                    opacity: 0.95
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: panel.dictating ? "■" : "◉"
+                        color: panel.dictating
+                            ? (theme ? theme.accentText : "#381e72")
+                            : (theme ? theme.textDim : "#cac4cf")
+                        font.pixelSize: panel.dictating ? 12 : 16
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: panel.dictate()
+                    }
                 }
 
                 Rectangle {
@@ -344,11 +529,80 @@ Item {
                     }
                 }
             }
+
+            // ---------- slash completion popup (overlay, drop-up) ----------
+            Rectangle {
+                id: slashPopup
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: inputBox.top
+                anchors.bottomMargin: 6
+                height: Math.min(12 + panel.slashMatches().length * 30, 192)
+                visible: panel.slashVisible()
+                radius: 12
+                color: surfaceHigh
+                border.color: line
+                border.width: 1
+                z: 10
+
+                ListView {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    clip: true
+                    spacing: 0
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: panel.slashMatches()
+
+                    delegate: Rectangle {
+                        width: ListView.view ? ListView.view.width - 12 : 360
+                        height: 30
+                        radius: 8
+                        color: index === panel.slashIndex ? surface : "transparent"
+
+                        Row {
+                            x: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+
+                            Text {
+                                text: modelData.cmd
+                                color: accent
+                                font.family: fontFamily
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                            }
+
+                            Text {
+                                text: modelData.desc
+                                color: fgDim
+                                opacity: 0.85
+                                elide: Text.ElideRight
+                                width: parent.parent.width - 8 - parent.children[0].implicitWidth - 8 - 8
+                                font.family: fontFamily
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        HoverHandler {
+                            onHoveredChanged: if (hovered) panel.slashIndex = index
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: panel.completeSlash(modelData.cmd)
+                        }
+                    }
+                }
+            }
         }
     }
 
     onVisibleChanged: if (visible) {
-        historyOpen = false;
+        historyOpen = historyFirst;
+        historyFirst = false;
+        statsOpen = false;
         list.follow = true;
         Qt.callLater(() => {
             list.positionViewAtEnd();

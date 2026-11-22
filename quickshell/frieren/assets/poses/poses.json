@@ -109,6 +109,37 @@
         100,
         240
       ]
+    },
+    "reading": {
+      "file": "reading.png",
+      "eyes": [
+        [
+          96,
+          73,
+          10,
+          11
+        ],
+        [
+          126,
+          73,
+          11,
+          11
+        ]
+      ],
+      "skin": "#f8e0c8",
+      "glow": [
+        59,
+        116
+      ]
+    },
+    "celebrate": {
+      "file": "celebrate.png",
+      "eyes": [],
+      "skin": "#fae7d7",
+      "glow": [
+        58,
+        104
+      ]
     }
   }
 }

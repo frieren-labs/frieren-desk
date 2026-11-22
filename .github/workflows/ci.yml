@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash syntax check
+        run: |
+          bash -n install.sh
+          for f in tools/*.sh quickshell/frieren/hooks/*.sh; do
+            echo "checking $f"
+            bash -n "$f"
+          done
+
+      - name: install glib dev
+        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev
+
+      - name: compile tray
+        run: cc -O2 -o /tmp/frieren-tray quickshell/frieren/tray.c $(pkg-config --cflags --libs gio-2.0)
+
+      - name: install qmllint
+        run: sudo apt-get install -y qt6-declarative-dev-tools
+
+      - name: qmllint components
+        run: qmllint quickshell/frieren/components/*.qml
+
+      - name: qmllint shell (informational)
+        continue-on-error: true
+        run: qmllint quickshell/frieren/shell.qml || echo "shell.qml lint is informational (missing Quickshell qmltypes)"

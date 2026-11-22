@@ -81,24 +81,38 @@ It writes nothing itself: every action calls `qs -c frieren ipc call frieren`.
 | 2 | Open chat / Close chat | `toggle` |
 | 4 | Stop | `stop`, enabled only while busy |
 | 5 | Separator | none |
-| 6 | Settings submenu | none |
+| 6 | Settings submenu: Pet, Sound & voice, Data | none |
+| 23 | Pet submenu | none |
 | 7 | Wander | `wander toggle` |
 | 8 | Sleep when idle | `sleep toggle` |
 | 9 | Blink | `blink toggle` |
-| 18 | Activity log | `log toggle` |
 | 10 | Size submenu | none |
 | 11 | Small | `scale 0.85` |
 | 12 | Medium | `scale 1.0` |
 | 13 | Large | `scale 1.15` |
 | 14 | Reset position | `resetpos` |
+| 24 | Sound & voice submenu | none |
+| 20 | Sound | `sound toggle` |
+| 21 | Voice replies | `voice toggle` |
+| 26 | Voice submenu (radio per downloaded voice) | none |
+| 30-49 | Voice `<id>` | `voiceid <id>`, checked when current |
+| 27 | Volume submenu | none |
+| 50-53 | Low / Medium / Loud / Max | `volume 40|80|100|130`, checked when current |
+| 25 | Data submenu | none |
+| 18 | Activity log | `log toggle` |
+| 22 | Backup database | `backup` |
 | 15 | Separator | none |
 | 16 | Quit | `quit` |
 | 17 | Account / Setup account | `auth` |
 | 19 | About | `about` |
 
+IDs 30-49 are dynamic: index into the sorted `voices/*.onnx` list (plus
+legacy `en.onnx`). A download changes the Voice submenu; the helper watches
+the voices dir and bumps the layout revision.
 Keep IDs stable. ID 3 (`New conversation`) was retired; do not reuse it for a
 different item. `notify_state()` sends updates only for IDs 1, 2, 4, 7, 8, 9,
-18, 11 to 13 and 17. Add new toggle or radio IDs to that list.
+20, 21, 18, 11 to 13, 17 and the current 30-49 range. Add new toggle or radio
+IDs to that list.
 
 ### Toggle type rules
 
@@ -140,7 +154,8 @@ Manual start, matching `shell.qml`:
   ~/.config/quickshell/frieren/assets/frieren-icon-128.argb \
   ~/.config/quickshell/frieren/assets/frieren-icon-64.argb \
   ~/.config/quickshell/frieren/assets/frieren-icon-32.argb \
-  ~/.local/state/frieren/state.json
+  ~/.local/state/frieren/state.json \
+  ~/.local/share/frieren/voice/voices
 ```
 
 ## IPC
@@ -163,6 +178,15 @@ The handler target is `frieren`.
 | `sleep` | `toggle` or `true` or `false` | Set sleep when idle |
 | `blink` | `toggle` or `true` or `false` | Set blinking |
 | `log` | `toggle` or `true` or `false` | Set the activity log hook |
+| `sound` | `toggle` or `true` or `false` | Set UI sounds |
+| `voice` | `toggle` or `true` or `false` | Set spoken replies |
+| `voiceid` | voice id | Select the spoken voice (enables voice) |
+| `volume` | 10-150 | Set voice volume percent |
+| `backup` | none | Hot-copy `frieren.db` to the backups dir |
+| `listen` | none | Toggle mic dictation into the input box |
+| `say` | text | Speak the text (or the last reply) aloud |
+| `exportmd` | none | Export the open conversation as Markdown |
+| `stats` | none | Open the chat on the activity panel |
 | `scale` | number | Set scale, clamped to 0.7 to 1.4 |
 | `resetpos` | none | Move to the default corner |
 | `quit` | none | Quit the shell |

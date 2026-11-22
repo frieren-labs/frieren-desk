@@ -30,6 +30,8 @@ Item {
     property bool asleep: false
     property bool wandering: false
     property string reaction: ""       // "", "ok", "error", "wake"
+    property bool reading: false
+    property int streak: 0
     property int idleSeconds: 0
     property real dragLean: 0
     property real shakeX: 0
@@ -41,6 +43,8 @@ Item {
     property bool hovered: mouse.containsMouse || mouse.drag.active
 
     signal activate()
+    signal historyRequest()
+    signal doubleActivate()
     signal moved(real x, real y)
 
     readonly property string home: Quickshell.env("HOME") || ""
@@ -69,8 +73,10 @@ Item {
 
     readonly property string mood: {
         if (reaction === "error") return "sad";
-        if (reaction === "ok" || reaction === "wake") return "happy";
+        if (reaction === "ok" || reaction === "wake")
+            return streak >= 3 ? "celebrate" : "happy";
         if (asleep) return "sleep";
+        if (reading) return "reading";
         if (toolActive) return "cast";
         if (busy) return "think";
         if (wandering) return "walk"; // no dedicated pose: falls back to idle
@@ -109,12 +115,23 @@ Item {
     Behavior on dragLean { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
     // ---------------- status label ----------------
+    function timeGreeting() {
+        const h = new Date().getHours();
+        if (h < 6) return "still up?";
+        if (h < 12) return "good morning";
+        if (h < 20) return "good afternoon";
+        return "good evening";
+    }
+
     readonly property string hintText: {
         if (root.asleep) return "";
         if (root.reaction === "error") return "oops…";
-        if (root.reaction === "ok" || root.reaction === "wake") return "done";
+        if (root.reaction === "ok" || root.reaction === "wake")
+            return root.streak >= 3 ? "amazing!" : "done";
+        if (root.reading) return "reading…";
         if (root.toolActive) return "casting a spell…";
         if (root.busy) return "thinking…";
+        if (root.hovered && !root.chatOpen) return root.timeGreeting();
         return "ask me something";
     }
     readonly property bool hintVisible: hintText.length > 0
@@ -687,9 +704,17 @@ Item {
     }
 
     // ---------------- mouse ----------------
+    // Single click is delayed so a double click does not toggle the chat twice.
+    Timer {
+        id: clickDelay
+        interval: 260
+        onTriggered: root.activate()
+    }
+
     MouseArea {
         id: mouse
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
         cursorShape: mouse.drag.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
         drag.target: root
@@ -727,14 +752,27 @@ Item {
             }
         }
 
-        onReleased: {
+        onReleased: mouse => {
             root.dragLean = 0;
-            if (moved) root.moved(root.x, root.y);
-            else root.activate();
+            if (moved) {
+                root.moved(root.x, root.y);
+            } else if (mouse.button === Qt.RightButton) {
+                root.historyRequest();
+            } else {
+                clickDelay.restart();
+            }
             root.resetIdle();
         }
 
+        onDoubleClicked: mouse => {
+            if (mouse.button === Qt.LeftButton) {
+                clickDelay.stop();
+                root.doubleActivate();
+            }
+        }
+
         onCanceled: {
+            clickDelay.stop();
             root.dragLean = 0;
             root.resetIdle();
         }
