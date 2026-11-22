@@ -62,9 +62,11 @@ matches what you get after install.
 | --- | --- |
 | Config, tray menu and animations | `quickshell/frieren/README.md` |
 | Chat history and activity log | `quickshell/frieren/README.md` (History and activity log) |
+| Architecture diagram (interactive) | `.archify/architecture-frieren-desk-20261122-021442/frieren-desk.html` |
 | OpenCode account setup | tray menu, `quickshell/frieren/components/AuthDialog.qml`, `shell.qml` |
 | Persona, permissions and command denylist | `opencode/agents/frieren.md` |
 | Source sprite sheet (art reference) | `assets/frieren-sheet.png` |
+| Sprite prompt for new poses | `assets/SPRITE_PROMPT.md` |
 | Tray icon pipeline (development) | `tools/make_icon.sh` |
 | Hyprland bind and autostart | `hypr/frieren.lua` |
 | Installer and app menu launcher | `install.sh`, `tools/frieren-launch.sh` |

@@ -4,3 +4,4 @@
 __pycache__/
 *.pyc
 quickshell/frieren/frieren-tray
+.archify
