@@ -1,0 +1,20 @@
+# Frieren Desk site (Jekyll source for GitHub Pages)
+# Served as a project page: https://jd-apprentice.github.io/frieren-desk
+title: Frieren Desk
+description: A chibi Frieren that lives on your Hyprland desktop. Chat with her, she operates the system through opencode.
+url: https://jd-apprentice.github.io
+baseurl: /frieren-desk
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+plugins:
+  - jekyll-seo-tag
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+  - vendor
