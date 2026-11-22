@@ -8,7 +8,7 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: bash syntax check
         run: |
@@ -24,17 +24,27 @@ jobs:
       - name: compile tray
         run: cc -O2 -o /tmp/frieren-tray quickshell/frieren/tray.c $(pkg-config --cflags --libs gio-2.0)
 
-      - name: install qmllint
-        run: sudo apt-get install -y qt6-declarative-dev-tools
+      - name: install qmllint and Qt QML modules
+        run: sudo apt-get install -y qt6-declarative-dev-tools qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-templates
 
       - name: qmllint components
+        env:
+          QML_IMPORT_PATH: /usr/lib/x86_64-linux-gnu/qt6/qml
         run: |
           BIN=$(dpkg -L qt6-declarative-dev-tools | grep -E '/qmllint$' | head -1)
           [ -n "$BIN" ] || { echo "qmllint not found in qt6-declarative-dev-tools"; exit 1; }
-          "$BIN" quickshell/frieren/components/*.qml
+          "$BIN" quickshell/frieren/components/*.qml 2>&1 | tee /tmp/qmllint.log
+          # Quickshell is not installed in CI, so [import] warnings for its
+          # modules are environmental noise. Fail on any real warning instead.
+          if grep "Warning:" /tmp/qmllint.log | grep -v "\[import\]" | grep -q .; then
+            echo "real qmllint warnings found (non-import)"; exit 1
+          fi
+          echo "clean apart from third-party [import] warnings"
 
       - name: qmllint shell (informational)
         continue-on-error: true
+        env:
+          QML_IMPORT_PATH: /usr/lib/x86_64-linux-gnu/qt6/qml
         run: |
           BIN=$(dpkg -L qt6-declarative-dev-tools | grep -E '/qmllint$' | head -1)
           [ -n "$BIN" ] && "$BIN" quickshell/frieren/shell.qml || echo "shell.qml lint is informational (missing Quickshell qmltypes)"
