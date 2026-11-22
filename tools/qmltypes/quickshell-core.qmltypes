@@ -1910,11 +1910,7 @@ Module {
         Signal { name: "childrenChanged"; lineNumber: 154 }
         Method { name: "onMenuDestroyed"; lineNumber: 157 }
     }
-    Component { isTypeOpaque: true; name: "Edges::Flags"; accessSemantics: "value" }
-    Component { isTypeOpaque: true; name: "PopupAdjustment::Flags"; accessSemantics: "value" }
-    Component { isTypeOpaque: true; name: "QList<DesktopAction*>"; accessSemantics: "value" }
     Component {
-        isTypeOpaque: true
         name: "qs::io::process::ProcessContext"
         accessSemantics: "value"
     }

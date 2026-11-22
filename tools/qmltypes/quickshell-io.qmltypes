@@ -640,7 +640,6 @@ Module {
         Property { name: "unbindStdout"; type: "bool"; write: "setUnbindStdout"; index: 4; lineNumber: 19 }
     }
     Component {
-        isTypeOpaque: true
         file: "qiodevice.h"
         lineNumber: 31
         name: "QIODevice"
@@ -667,7 +666,6 @@ Module {
         Signal { name: "readChannelFinished"; lineNumber: 124 }
     }
     Component {
-        isTypeOpaque: true
         file: "qlocalsocket.h"
         lineNumber: 19
         name: "QLocalSocket"
@@ -742,7 +740,6 @@ Module {
         Method { name: "_q_abortConnectionAttempt"; lineNumber: 122 }
     }
     Component {
-        isTypeOpaque: true
         file: "qprocess.h"
         lineNumber: 82
         name: "QProcess"
