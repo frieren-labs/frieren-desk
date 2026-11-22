@@ -32,7 +32,7 @@ jobs:
         run: |
           BIN=$(dpkg -L qt6-declarative-dev-tools | grep -E '/qmllint$' | head -1)
           [ -n "$BIN" ] || { echo "qmllint not found in qt6-declarative-dev-tools"; exit 1; }
-          "$BIN" -i tools/qmltypes/quickshell-core.qmltypes -i tools/qmltypes/quickshell-io.qmltypes quickshell/frieren/components/*.qml 2>&1 | tee /tmp/qmllint.log
+          "$BIN" -i tools/qmltypes/quickshell-core.qmltypes -i tools/qmltypes/quickshell-io.qmltypes -i tools/qmltypes/quickshell-fileview.qmltypes quickshell/frieren/components/*.qml 2>&1 | tee /tmp/qmllint.log
           # Quickshell is not installed in CI, so [import] warnings for its
           # modules are environmental noise. [unqualified] fires on idiomatic QML
           # (delegate modelData, own properties) and on the same missing module.
@@ -48,4 +48,4 @@ jobs:
           QML_IMPORT_PATH: /usr/lib/x86_64-linux-gnu/qt6/qml
         run: |
           BIN=$(dpkg -L qt6-declarative-dev-tools | grep -E '/qmllint$' | head -1)
-          [ -n "$BIN" ] && "$BIN" -i tools/qmltypes/quickshell-core.qmltypes -i tools/qmltypes/quickshell-io.qmltypes quickshell/frieren/shell.qml || echo "shell.qml lint is informational (Wayland/Quickshell modules not installed)"
+          [ -n "$BIN" ] && "$BIN" -i tools/qmltypes/quickshell-core.qmltypes -i tools/qmltypes/quickshell-io.qmltypes -i tools/qmltypes/quickshell-fileview.qmltypes quickshell/frieren/shell.qml || echo "shell.qml lint is informational (Wayland/Quickshell modules not installed)"
