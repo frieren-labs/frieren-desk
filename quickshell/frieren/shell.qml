@@ -35,6 +35,7 @@ ShellRoot {
     property bool authChecking: false
     property bool authSaving: false
     property bool authOpen: false
+    property bool aboutOpen: false
     property bool stateLoaded: false
     property var authCredentials: []
     property var authCleanupIds: []
@@ -54,12 +55,32 @@ ShellRoot {
     property bool wanderEnabled: true
     property bool sleepEnabled: true
     property bool blinkEnabled: true
+    property bool logEnabled: true
     property real petScale: 1.0
     property real lastGoodX: 80
     property real lastGoodY: 220
 
     // partID -> index in the ListModel
     property var partIndex: ({})
+
+    // conversation history (SQLite, same file as the activity log)
+    property var conversations: []
+    property bool historyReady: false
+    property bool historyStarted: false
+    property bool legacyMigrating: false
+    property bool chatRestored: false
+    property string activeConvId: ""
+    property var historyLoadQueue: []
+
+    // per-turn telemetry (fed to the activity hook)
+    property string turnPrompt: ""
+    property real turnStarted: 0
+    property int turnTools: 0
+    property int turnToolFails: 0
+    property string turnError: ""
+    property bool turnLogged: false
+    property var toolStartTimes: ({})
+    property var toolFinished: ({})
 
     // ---------------- theme (matugen/DMS, with fallback) ----------------
     QtObject {
@@ -125,6 +146,8 @@ ShellRoot {
     // ---------------- persistent state (own file) ----------------
     readonly property string stateDir: home + "/.local/state/frieren"
     readonly property string statePath: stateDir + "/state.json"
+    readonly property string dbPath: stateDir + "/frieren.db"
+    readonly property string hookPath: home + "/.config/quickshell/frieren/hooks/frieren-log.sh"
 
     property real petX: 80
     property real petY: 220
@@ -140,6 +163,7 @@ ShellRoot {
             // flag from reaching the tray menu.
             root.stateLoaded = true;
             if (root.authStatus !== "unknown") root.saveState();
+            root.restoreChatFromHistory();
         }
     }
 
@@ -153,6 +177,7 @@ ShellRoot {
             if (root.stateLoaded) return;
             root.stateLoaded = true;
             if (root.authStatus !== "unknown") root.saveState();
+            root.restoreChatFromHistory();
         }
     }
 
@@ -175,6 +200,7 @@ ShellRoot {
             if (typeof doc.wander === "boolean") root.wanderEnabled = doc.wander;
             if (typeof doc.sleep === "boolean") root.sleepEnabled = doc.sleep;
             if (typeof doc.blink === "boolean") root.blinkEnabled = doc.blink;
+            if (typeof doc.log === "boolean") root.logEnabled = doc.log;
             if (typeof doc.scale === "number")
                 root.petScale = Math.max(0.7, Math.min(1.4, doc.scale));
         } catch (e) {}
@@ -191,6 +217,7 @@ ShellRoot {
         // The auth check can finish before the state file loads. Persist the
         // account flag now that the loaded values are in place.
         if (root.authStatus !== "unknown") root.saveState();
+        root.restoreChatFromHistory();
     }
 
     property bool petPlaced: false
@@ -222,6 +249,7 @@ ShellRoot {
             wander: root.wanderEnabled,
             sleep: root.sleepEnabled,
             blink: root.blinkEnabled,
+            log: root.logEnabled,
             scale: root.petScale,
             auth: root.authStatus === "connected",
             busy: root.busy,
@@ -292,9 +320,447 @@ ShellRoot {
             text: text || "",
             command: "",
             output: "",
-            status: ""
+            status: "",
+            ts: Date.now()
         });
         return chat.count - 1;
+    }
+
+    // ---------------- conversation history (SQLite) ----------------
+    // History and the activity log share frieren.db. QML talks to it through
+    // the sqlite3 CLI, and every payload travels over stdin, so long
+    // conversations never hit the argv limit.
+    readonly property string historySchema: [
+        "CREATE TABLE IF NOT EXISTS conversations (",
+        "  id TEXT PRIMARY KEY,",
+        "  title TEXT NOT NULL DEFAULT '',",
+        "  created_at INTEGER NOT NULL DEFAULT 0,",
+        "  updated_at INTEGER NOT NULL DEFAULT 0",
+        ");",
+        "CREATE TABLE IF NOT EXISTS messages (",
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,",
+        "  conversation_id TEXT NOT NULL,",
+        "  role TEXT NOT NULL DEFAULT '',",
+        "  text TEXT NOT NULL DEFAULT '',",
+        "  command TEXT NOT NULL DEFAULT '',",
+        "  output TEXT NOT NULL DEFAULT '',",
+        "  status TEXT NOT NULL DEFAULT '',",
+        "  ts INTEGER NOT NULL DEFAULT 0",
+        ");",
+        "CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversation_id);",
+        "CREATE INDEX IF NOT EXISTS conversations_updated ON conversations(updated_at);"
+    ].join("\n")
+
+    Process {
+        id: historyLister
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
+        stdout: StdioCollector { id: historyListOut }
+        onStarted: {
+            historyLister.write(root.historySchema + "\n" + root.historyListSql());
+            historyLister.stdinEnabled = false;
+        }
+        onExited: (code, status) => root.applyHistoryList(historyListOut.text)
+    }
+
+    Process {
+        id: historyLoader
+        property string conversationId: ""
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
+        stdout: StdioCollector { id: historyLoadOut }
+        onStarted: {
+            historyLoader.write(root.historySchema + "\n"
+                + root.historyMessagesSql(historyLoader.conversationId));
+            historyLoader.stdinEnabled = false;
+        }
+        onExited: (code, status) => {
+            const id = historyLoader.conversationId;
+            historyLoader.conversationId = "";
+            root.finishLoadConversation(id, historyLoadOut.text);
+            root.flushHistoryLoads();
+        }
+    }
+
+    Process {
+        id: historyWriter
+        property var queue: []
+        property string sql: ""
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-cmd", ".timeout 5000", root.dbPath]
+
+        onStarted: {
+            historyWriter.write(historyWriter.sql);
+            historyWriter.sql = "";
+            historyWriter.stdinEnabled = false;
+        }
+
+        onExited: (code, status) => {
+            historyWriter.stdinEnabled = true;
+            startNext();
+            if (!running && queue.length === 0 && root.legacyMigrating) {
+                root.legacyMigrating = false;
+                if (code === 0) root.retireLegacyHistory();
+                root.historyStarted = false;
+                root.chatRestored = false;
+                root.startHistory();
+            }
+        }
+
+        function startNext() {
+            if (running || queue.length === 0) return;
+            sql = String(queue.shift());
+            running = true;
+        }
+    }
+
+    // The JSON file used before the database existed. It is imported once and
+    // then renamed, so the migration cannot overwrite newer rows.
+    FileView {
+        id: legacyHistory
+        path: root.stateDir + "/history.json"
+        printErrors: false
+        onLoaded: root.migrateLegacyHistory(text())
+        onLoadFailed: root.startHistory()
+    }
+
+    Process {
+        id: legacyRetire
+        running: false
+        command: ["sh", "-c", 'mv -f "$0" "$0.migrated"', root.stateDir + "/history.json"]
+    }
+
+    // A missing file does not always emit loadFailed. Do not wait forever.
+    Timer {
+        interval: 1200
+        running: true
+        repeat: false
+        onTriggered: root.startHistory()
+    }
+
+    function startHistory() {
+        if (root.historyStarted || root.legacyMigrating) return;
+        root.historyStarted = true;
+        historyLister.running = true;
+    }
+
+    function sqlLiteral(value) {
+        return "'" + String(value).replace(/'/g, "''") + "'";
+    }
+
+    function historyListSql() {
+        return "SELECT c.id, c.title, c.updated_at AS updated, "
+            + "(SELECT count(*) FROM messages m WHERE m.conversation_id = c.id"
+            + " AND m.role = 'user') AS questions "
+            + "FROM conversations c ORDER BY c.updated_at DESC LIMIT 60;";
+    }
+
+    function historyMessagesSql(id) {
+        return "SELECT role, text, command, output, status, ts FROM messages "
+            + "WHERE conversation_id = " + root.sqlLiteral(id) + " ORDER BY id;";
+    }
+
+    function historyPruneSql() {
+        return "DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations"
+            + " WHERE id NOT IN (SELECT id FROM conversations ORDER BY updated_at DESC LIMIT 60));"
+            + "\nDELETE FROM conversations WHERE id NOT IN"
+            + " (SELECT id FROM conversations ORDER BY updated_at DESC LIMIT 60);";
+    }
+
+    function historySaveSql(id, title, updated, messages) {
+        const json = root.sqlLiteral(JSON.stringify({
+            id: id, title: title, updated: updated, messages: messages
+        }));
+        return root.historySchema
+            + "\nBEGIN;"
+            + "\nINSERT INTO conversations (id, title, created_at, updated_at)"
+            + " VALUES (json_extract(" + json + ", '$.id'),"
+            + " json_extract(" + json + ", '$.title'),"
+            + " json_extract(" + json + ", '$.updated'),"
+            + " json_extract(" + json + ", '$.updated'))"
+            + " ON CONFLICT(id) DO UPDATE SET"
+            + " title = excluded.title, updated_at = excluded.updated_at;"
+            + "\nDELETE FROM messages WHERE conversation_id = json_extract(" + json + ", '$.id');"
+            + "\nINSERT INTO messages (conversation_id, role, text, command, output, status, ts)"
+            + " SELECT json_extract(" + json + ", '$.id'),"
+            + " json_extract(value, '$.role'), json_extract(value, '$.text'),"
+            + " json_extract(value, '$.command'), json_extract(value, '$.output'),"
+            + " json_extract(value, '$.status'), json_extract(value, '$.ts')"
+            + " FROM json_each(json_extract(" + json + ", '$.messages'));"
+            + "\n" + root.historyPruneSql()
+            + "\nCOMMIT;";
+    }
+
+    function historyDeleteSql(id) {
+        const key = root.sqlLiteral(id);
+        return root.historySchema
+            + "\nDELETE FROM messages WHERE conversation_id = " + key + ";"
+            + "\nDELETE FROM conversations WHERE id = " + key + ";";
+    }
+
+    function queueHistoryWrite(sql) {
+        historyWriter.queue.push(sql);
+        historyWriter.startNext();
+    }
+
+    function applyHistoryList(raw) {
+        let rows = [];
+        try {
+            rows = JSON.parse(String(raw || "[]"));
+        } catch (e) {}
+        if (!Array.isArray(rows)) rows = [];
+        root.conversations = rows.map(row => ({
+            id: String(row.id || ""),
+            title: String(row.title || ""),
+            updated: Number(row.updated) || 0,
+            questions: Number(row.questions) || 0
+        })).filter(conv => conv.id.length > 0);
+        root.historyReady = true;
+        root.restoreChatFromHistory();
+    }
+
+    function migrateLegacyHistory(raw) {
+        let doc = null;
+        try {
+            doc = JSON.parse(raw);
+        } catch (e) {}
+        if (!doc || !Array.isArray(doc.conversations) || doc.conversations.length === 0) {
+            root.retireLegacyHistory();
+            root.startHistory();
+            return;
+        }
+        const convs = doc.conversations.filter(conv =>
+            conv && typeof conv.id === "string" && Array.isArray(conv.messages));
+        if (convs.length === 0) {
+            root.retireLegacyHistory();
+            root.startHistory();
+            return;
+        }
+        const json = root.sqlLiteral(JSON.stringify(convs.map(conv => ({
+            id: String(conv.id),
+            title: String(conv.title || ""),
+            updated: Number(conv.updated) || Date.now(),
+            messages: conv.messages.map(m => ({
+                role: String((m && m.role) || "assistant"),
+                text: String((m && m.text) || ""),
+                command: String((m && m.command) || ""),
+                output: String((m && m.output) || ""),
+                status: String((m && m.status) || ""),
+                ts: Number((m && m.ts) || 0)
+            }))
+        }))));
+        root.legacyMigrating = true;
+        root.queueHistoryWrite(root.historySchema
+            + "\nBEGIN;"
+            + "\nDELETE FROM messages WHERE conversation_id IN"
+            + " (SELECT json_extract(value, '$.id') FROM json_each(" + json + "));"
+            + "\nDELETE FROM conversations WHERE id IN"
+            + " (SELECT json_extract(value, '$.id') FROM json_each(" + json + "));"
+            + "\nINSERT INTO conversations (id, title, created_at, updated_at)"
+            + " SELECT json_extract(value, '$.id'), json_extract(value, '$.title'),"
+            + " json_extract(value, '$.updated'), json_extract(value, '$.updated')"
+            + " FROM json_each(" + json + ");"
+            + "\nINSERT INTO messages (conversation_id, role, text, command, output, status, ts)"
+            + " SELECT json_extract(c.value, '$.id'), json_extract(m.value, '$.role'),"
+            + " json_extract(m.value, '$.text'), json_extract(m.value, '$.command'),"
+            + " json_extract(m.value, '$.output'), json_extract(m.value, '$.status'),"
+            + " json_extract(m.value, '$.ts')"
+            + " FROM json_each(" + json + ") AS c,"
+            + " json_each(json_extract(c.value, '$.messages')) AS m;"
+            + "\n" + root.historyPruneSql()
+            + "\nCOMMIT;");
+    }
+
+    function retireLegacyHistory() {
+        if (!legacyRetire.running) legacyRetire.running = true;
+    }
+
+    function restoreChatFromHistory() {
+        if (root.chatRestored || !root.stateLoaded || !root.historyReady) return;
+        root.chatRestored = true;
+        if (chat.count > 0) return;
+        if (root.conversations.length === 0) return;
+        // Only reopen the conversation of the saved opencode session. A fresh
+        // conversation has no session id and starts empty on purpose.
+        if (root.sessionId.length === 0) return;
+
+        for (let i = 0; i < root.conversations.length; i += 1) {
+            if (root.conversations[i].id === root.sessionId) {
+                root.requestConversation(root.sessionId);
+                return;
+            }
+        }
+    }
+
+    function isDraftId(id) {
+        return String(id || "").indexOf("local-") === 0;
+    }
+
+    function requestConversation(id) {
+        if (root.historyLoadQueue.indexOf(id) >= 0) return;
+        if (historyLoader.running) {
+            root.historyLoadQueue.push(id);
+            return;
+        }
+        historyLoader.conversationId = id;
+        historyLoader.running = true;
+    }
+
+    function flushHistoryLoads() {
+        if (historyLoader.running || root.historyLoadQueue.length === 0) return;
+        root.requestConversation(String(root.historyLoadQueue.shift()));
+    }
+
+    function finishLoadConversation(id, raw) {
+        let rows = [];
+        try {
+            rows = JSON.parse(String(raw || "[]"));
+        } catch (e) {}
+        if (!Array.isArray(rows) || rows.length === 0 || id.length === 0) return;
+
+        chat.clear();
+        root.partIndex = ({});
+        for (let i = 0; i < rows.length; i += 1) {
+            const m = rows[i] || {};
+            chat.append({
+                role: String(m.role || "assistant"),
+                text: String(m.text || ""),
+                command: String(m.command || ""),
+                output: String(m.output || ""),
+                status: String(m.status || ""),
+                ts: Number(m.ts) || 0
+            });
+        }
+        root.activeConvId = id;
+        root.sessionId = root.isDraftId(id) ? "" : id;
+        root.saveState();
+        pet.wake();
+    }
+
+    function openConversation(id) {
+        if (root.busy) {
+            root.addMessage("system", "Wait for the current request to finish before switching conversations.");
+            return;
+        }
+        if (chat.count > 0 && id === root.activeConvId) {
+            pet.wake();
+            return;
+        }
+        for (let i = 0; i < root.conversations.length; i += 1) {
+            if (root.conversations[i].id === id) {
+                root.requestConversation(id);
+                return;
+            }
+        }
+    }
+
+    function deleteConversation(id) {
+        root.conversations = root.conversations.filter(conv => conv.id !== id);
+        const active = id === root.sessionId
+            || (root.activeConvId.length > 0 && id === root.activeConvId);
+        if (active) {
+            root.sessionId = "";
+            root.activeConvId = "";
+            chat.clear();
+            root.partIndex = ({});
+            root.saveState();
+            root.addMessage("assistant", "Conversation deleted. What do you need?");
+        }
+        root.queueHistoryWrite(root.historyDeleteSql(id));
+    }
+
+    function conversationSnapshot() {
+        const messages = [];
+        for (let i = 0; i < chat.count; i += 1) {
+            const m = chat.get(i);
+            if (m.role === "system" && !m.text) continue;
+            messages.push({
+                role: String(m.role),
+                text: String(m.text || ""),
+                command: String(m.command || ""),
+                output: String(m.output || "").slice(0, 1500),
+                status: String(m.status || ""),
+                ts: m.ts || 0
+            });
+        }
+        return messages;
+    }
+
+    function historyTitle(messages) {
+        for (let i = 0; i < messages.length; i += 1) {
+            if (messages[i].role !== "user") continue;
+            const text = messages[i].text.replace(/\s+/g, " ").trim();
+            if (text.length > 0) return text.slice(0, 70);
+        }
+        return "";
+    }
+
+    function saveHistory() {
+        if (!root.historyReady) return;
+        const messages = root.conversationSnapshot();
+        const title = root.historyTitle(messages);
+        // Greetings and notices alone are not a conversation worth keeping.
+        if (title.length === 0) return;
+
+        if (root.activeConvId.length === 0)
+            root.activeConvId = root.sessionId.length > 0 ? root.sessionId : ("local-" + Date.now());
+
+        const id = root.activeConvId;
+        const updated = Date.now();
+        const kept = messages.slice(-150);
+        let questions = 0;
+        for (let i = 0; i < kept.length; i += 1) {
+            if (kept[i].role === "user") questions += 1;
+        }
+
+        const entry = {
+            id: id,
+            title: title,
+            updated: updated,
+            questions: questions
+        };
+        const list = root.conversations.slice();
+        let index = -1;
+        for (let i = 0; i < list.length; i += 1) {
+            if (list[i].id === id) {
+                index = i;
+                break;
+            }
+        }
+        if (index >= 0) list[index] = entry;
+        else list.push(entry);
+        list.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+        root.conversations = list.slice(0, 60);
+        root.queueHistoryWrite(root.historySaveSql(id, title, updated, kept));
+    }
+
+    // opencode assigns the session id on the first event of a run. Move the
+    // open conversation under the real id so the list does not duplicate it.
+    function adoptSessionId(id) {
+        if (!id || id === root.sessionId) return;
+        const previous = root.activeConvId;
+        if (previous.length > 0 && previous !== id) {
+            const key = root.sqlLiteral(id);
+            const old = root.sqlLiteral(previous);
+            root.queueHistoryWrite(root.historySchema
+                + "\nUPDATE conversations SET id = " + key + " WHERE id = " + old + ";"
+                + "\nUPDATE messages SET conversation_id = " + key
+                + " WHERE conversation_id = " + old + ";");
+            const list = root.conversations.slice();
+            for (let i = 0; i < list.length; i += 1) {
+                if (list[i].id === previous) {
+                    list[i].id = id;
+                    root.conversations = list;
+                    break;
+                }
+            }
+        }
+        root.activeConvId = id;
+        root.sessionId = id;
+        root.saveState();
     }
 
     function updateMessage(idx, props) {
@@ -330,6 +796,29 @@ ShellRoot {
             partIndex[part.id] = idx;
         }
         updateMessage(idx, props);
+
+        // Telemetry: one activity event per finished tool, with its duration.
+        const partId = String(part.id || "");
+        if (status === "running" || status === "pending") {
+            if (root.toolStartTimes[partId] === undefined)
+                root.toolStartTimes[partId] = Date.now();
+        } else if (!root.toolFinished[partId]) {
+            root.toolFinished[partId] = true;
+            const started = root.toolStartTimes[partId] || 0;
+            root.turnTools += 1;
+            if (status !== "completed") root.turnToolFails += 1;
+            root.emitEvent({
+                event: "tool",
+                ts: new Date().toISOString(),
+                session: root.sessionId,
+                tool: String(part.tool || "tool"),
+                command: String(detail).slice(0, 500),
+                status: String(status),
+                ok: status === "completed",
+                duration_ms: started ? Date.now() - started : 0
+            });
+        }
+
         // A finished tool stops the cast pose. A failed tool also makes the
         // pet sad: opencode still exits 0, so onExited never sees the error.
         toolActive = status === "running" || status === "pending";
@@ -348,6 +837,7 @@ ShellRoot {
         // Quota errors come with a huge JSON blob inside
         const brace = msg.indexOf("{");
         if (msg.length > 220 && brace > 0) msg = msg.slice(0, brace).trim();
+        root.turnError = msg;
         addMessage("system", "⚠ " + msg);
         pet.react("error");
     }
@@ -359,10 +849,7 @@ ShellRoot {
         let ev;
         try { ev = JSON.parse(line); } catch (e) { return; }
 
-        if (ev.sessionID && ev.sessionID !== root.sessionId) {
-            root.sessionId = ev.sessionID;
-            root.saveState();
-        }
+        if (ev.sessionID && ev.sessionID !== root.sessionId) root.adoptSessionId(ev.sessionID);
 
         const part = ev.part || {};
 
@@ -394,6 +881,18 @@ ShellRoot {
         toolCount = 0;
         partIndex = ({});
 
+        // per-turn telemetry
+        root.turnPrompt = text;
+        root.turnStarted = Date.now();
+        root.turnTools = 0;
+        root.turnToolFails = 0;
+        root.turnError = "";
+        root.turnLogged = false;
+        root.toolStartTimes = ({});
+        root.toolFinished = ({});
+
+        root.saveHistory();
+
         const args = ["run", "--format", "json", "--model", modelName, "--agent", agentName];
         if (root.sessionId) args.push("--session", root.sessionId);
         args.push(text);
@@ -413,12 +912,16 @@ ShellRoot {
         busy = false;
         toolActive = false;
         addMessage("system", "Stopped.");
+        root.logTurn(-1, "stopped");
+        root.saveHistory();
     }
 
     function freshSession() {
         if (root.minimized) root.restorePet();
         if (busy) stopAgent();
+        root.saveHistory();
         root.sessionId = "";
+        root.activeConvId = "";
         root.saveState();
         chat.clear();
         partIndex = ({});
@@ -442,6 +945,60 @@ ShellRoot {
                 ? "Hi. I'm Frieren. Connect your OpenCode account with the banner below, then ask me anything."
                 : "Hi. I'm Frieren. Ask me to do something on the system, or ask me anything.");
         }
+    }
+
+    // ---------------- activity hook (local dashboard feed) ----------------
+    property var hookQueue: []
+
+    Process {
+        id: hookRunner
+        property string payload: ""
+        running: false
+        stdinEnabled: true
+        command: ["sh", root.hookPath]
+        onStarted: {
+            hookRunner.write(hookRunner.payload + "\n");
+            hookRunner.payload = "";
+            hookRunner.stdinEnabled = false;
+        }
+        onExited: {
+            hookRunner.stdinEnabled = true;
+            root.flushHooks();
+        }
+    }
+
+    // Events are queued so a turn never blocks on the hook process.
+    function emitEvent(event) {
+        if (!root.logEnabled) return;
+        root.hookQueue.push(JSON.stringify(event));
+        root.flushHooks();
+    }
+
+    function flushHooks() {
+        if (hookRunner.running || root.hookQueue.length === 0) return;
+        hookRunner.payload = String(root.hookQueue.shift());
+        hookRunner.running = true;
+    }
+
+    // One event per question, so a dashboard can chart outcomes per turn.
+    // exit_code -1 means the run was stopped from the chat.
+    function logTurn(exitCode, errorText) {
+        if (root.turnLogged || root.turnStarted <= 0) return;
+        root.turnLogged = true;
+        root.emitEvent({
+            event: "turn",
+            ts: new Date().toISOString(),
+            session: root.sessionId,
+            prompt: root.turnPrompt.slice(0, 500),
+            duration_ms: Date.now() - root.turnStarted,
+            exit_code: exitCode,
+            ok: exitCode === 0 && !root.hasError && root.turnToolFails === 0,
+            tools_total: root.turnTools,
+            tools_failed: root.turnToolFails,
+            error: root.turnError.length > 0 ? root.turnError
+                : (errorText || (exitCode !== 0 ? "exit " + exitCode : "")),
+            model: root.modelName
+        });
     }
 
     // ---------------- opencode account ----------------
@@ -753,6 +1310,8 @@ ShellRoot {
                 pet.react("error");
                 root.addMessage("system", "opencode exited with code " + code + ".");
             }
+            root.logTurn(code, "");
+            root.saveHistory();
         }
     }
 
@@ -879,6 +1438,8 @@ ShellRoot {
 
         function auth(): void { root.openAuthDialog() }
 
+        function about(): void { root.aboutOpen = true }
+
         function ping(): string { return "pong" }
 
         function minimize(): void { root.minimizePet() }
@@ -898,6 +1459,11 @@ ShellRoot {
 
         function blink(mode: string): void {
             root.blinkEnabled = (mode === "toggle") ? !root.blinkEnabled : (mode === "true");
+            root.saveState();
+        }
+
+        function log(mode: string): void {
+            root.logEnabled = (mode === "toggle") ? !root.logEnabled : (mode === "true");
             root.saveState();
         }
 
@@ -1031,12 +1597,15 @@ ShellRoot {
             busy: root.busy
             hasSession: root.sessionId.length > 0
             authMissing: root.authMissing
+            conversations: root.conversations
 
             onSubmit: text => root.send(text)
             onStop: root.stopAgent()
             onFresh: root.freshSession()
             onDismiss: root.chatOpen = false
             onConfigureAuth: root.openAuthDialog()
+            onOpenConversation: id => root.openConversation(id)
+            onDeleteConversation: id => root.deleteConversation(id)
         }
     }
 
@@ -1091,6 +1660,42 @@ ShellRoot {
             onTerminalLogin: root.startTerminalLogin()
             onCheck: root.checkAuth()
             onClose: root.authOpen = false
+        }
+    }
+
+    // ---------------- about dialog ----------------
+    PanelWindow {
+        id: aboutWin
+
+        visible: root.aboutOpen
+        screen: petWin.screen
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.namespace: "frieren-about"
+        WlrLayershell.keyboardFocus: root.aboutOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        focusable: true
+
+        anchors {
+            top: true
+            left: true
+            right: true
+            bottom: true
+        }
+
+        implicitWidth: aboutWin.screen ? aboutWin.screen.width : 1920
+        implicitHeight: aboutWin.screen ? aboutWin.screen.height : 1080
+
+        mask: Region { item: aboutDialog }
+
+        AboutDialog {
+            id: aboutDialog
+            visible: aboutWin.visible
+            anchors.centerIn: parent
+            width: implicitWidth
+            height: implicitHeight
+            theme: theme
+            onClose: root.aboutOpen = false
         }
     }
 }

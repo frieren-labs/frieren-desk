@@ -46,8 +46,8 @@ cat ~/.local/state/frieren/state.json
 .opencode/skills/frieren-pet/scripts/tray-state.sh
 ```
 
-The tray output must show `toggle-type: checkmark` for Wander, Sleep when idle
-and Blink, and `toggle-type: radio` for Size. `check` is a bug.
+The tray output must show `toggle-type: checkmark` for Wander, Sleep when idle,
+Blink and Activity log, and `toggle-type: radio` for Size. `check` is a bug.
 
 The helper should be a child of `qs` and disappear within a second of
 `qs -c frieren ipc call frieren quit`. It should not spawn periodic `qs ...
@@ -82,13 +82,27 @@ Toggle each item and confirm all three layers agree:
 ### Chat
 
 - Send a message and see the assistant text stream in.
+- A reply with Markdown shows a large heading, bold, bullets, a numbered list, a
+  quote, inline code and a fenced code block with a language label.
+- A long reply keeps following only while the list is at the end. Scroll up
+  while text is streaming: the view must stay put and show `↓ Latest`.
+- `↓ Latest` returns to the end and resumes following.
+- Select text with the mouse in a reply, a tool block and a code block.
+- Hover a reply and copy it. Copy a code block with its icon; the check mark
+  appears and `wl-paste` returns the code.
+- Copy a tool command with its icon.
 - A tool call shows a block with command and output.
 - A tool error shows a red block and the sad pose.
 - Stop mid-run shows `Stopped.` and returns to idle without a late success jump.
 - New conversation clears the transcript and starts a fresh session.
 - Close and reopen the chat. The transcript stays for the current shell session.
-- Restart the shell. The session ID is reused, even though the transcript is
-  empty.
+- `≡` lists past conversations newest first with question count and time.
+- Open an older conversation: its messages appear and the next question
+  continues that opencode session (`state.json` session changes).
+- Delete a conversation: it leaves the list; deleting the open one starts a
+  fresh conversation.
+- Restart the shell. The saved session's transcript is restored from
+  `frieren.db`. After `+` (fresh), a restart starts empty.
 - Escape closes the chat.
 
 ### Backend
@@ -98,11 +112,35 @@ Toggle each item and confirm all three layers agree:
 - A message sent while busy is rejected with a system notice.
 - A missing or unauthenticated opencode shows a visible error, not a silent hang.
 
+### History and activity log
+
+- After a turn, `sqlite3 ~/.local/state/frieren/frieren.db
+  "select id, title from conversations;"` shows the conversation and
+  `select role from messages where conversation_id='<id>' order by id;` shows
+  the transcript. A refused run still keeps the question.
+- Restart the shell: the saved session's transcript comes back from the
+  database, not from a JSON file.
+- If `history.json` exists from an older install, it is imported once and
+  renamed to `history.json.migrated`; rows are not duplicated on the next start.
+- `events.jsonl` gains one `turn` line per question. A stopped run has
+  `exit_code: -1` and `error: "stopped"`.
+- `sqlite3 ~/.local/state/frieren/frieren.db "select prompt, ok, tools_failed from turns;"`.
+- A failed tool sets `ok = 0` on its turn even when opencode exits 0.
+- Tray → Settings → Activity log off stops new `turns`/`tools` rows; history
+  and the existing files stay.
+
 ### Theme
 
 - Change the DMS color mode and reopen the chat. Colors follow the theme.
 - No component uses a hardcoded color outside the fallback theme.
 - Fonts fall back cleanly when the DMS typography file is missing.
+
+### About
+
+- Tray → `About` opens the card with the happy pose, project description,
+  author, repository link and MIT license link.
+- The repository and license links open in the browser.
+- Escape and `✕` close it; the rest of the desktop stays clickable (mask).
 
 ### Account
 

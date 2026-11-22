@@ -13,10 +13,15 @@ icon with a DBusMenu.
 | --- | --- |
 | `quickshell/frieren/shell.qml` | `ShellRoot`: windows, theme, state, chat model, opencode process, tray helper process, IPC |
 | `quickshell/frieren/components/PetSprite.qml` | Sprite, poses, timers, animations, drag, click |
-| `quickshell/frieren/components/ChatPanel.qml` | Chat frame, header, list and input |
-| `quickshell/frieren/components/MessageBubble.qml` | Message and tool log rendering |
+| `quickshell/frieren/components/ChatPanel.qml` | Chat frame, header, list, history toggle and input |
+| `quickshell/frieren/components/MessageBubble.qml` | Message and tool log rendering, copy buttons |
+| `quickshell/frieren/components/MarkdownText.qml` | Markdown blocks, fenced code boxes, inline formatting |
+| `quickshell/frieren/components/CopyButton.qml` | Clipboard button with a check mark |
+| `quickshell/frieren/components/HistoryPanel.qml` | Past conversations list |
+| `quickshell/frieren/hooks/frieren-log.sh` | Activity hook: JSONL plus optional SQLite |
 | `quickshell/frieren/tray.c` | Native StatusNotifierItem and `com.canonical.dbusmenu` helper (compiled to `frieren-tray`) |
 | `quickshell/frieren/components/AuthDialog.qml` | OpenCode account card (status, key, terminal login) |
+| `quickshell/frieren/components/AboutDialog.qml` | About card (happy pose, author, repository, MIT license) |
 | `quickshell/frieren/assets/poses/` | Six 228x256 PNG poses plus `poses.json` metadata |
 | `assets/frieren-sheet.png` | Source sprite sheet, kept as art reference |
 | `assets/poses-preview.png` | README showcase image (checked in) |
@@ -48,12 +53,29 @@ click / keybind / tray / IPC
       v        v
   chat list  busy / toolActive / hasError
       |        |
-      v        v
- ChatPanel  PetSprite.mood and animations
+      |        v
+      |   PetSprite.mood and animations
+      |
+      +--> saveHistory()  -> frieren.db (conversations, messages)
+      |
+      +--> emitEvent()    -> hooks/frieren-log.sh
+                              -> events.jsonl
+                              -> frieren.db (turns, tools, daily)
 ```
 
 State changes go to `~/.local/state/frieren/state.json` through
 `saveState()`. `tray.c` reads that file and listens to IPC calls.
+
+## Persistence
+
+| File | Owner | Purpose |
+| --- | --- | --- |
+| `state.json` | `saveState()` | Position, session, settings and tray snapshots |
+| `frieren.db` | `shell.qml` + hook | Conversations and messages; turns, tools and the `daily` view |
+| `events.jsonl` | `hooks/frieren-log.sh` | Raw turn and tool events, always written |
+
+`state.json` is written to a `.tmp` sibling and moved into place. History and
+activity rows go through the `sqlite3` CLI with the SQL on stdin.
 
 ## Windows
 
@@ -96,6 +118,15 @@ is `WlrKeyboardFocus.Exclusive`, but it blocks global keys while open.
 - Polls the status every 4 seconds while open (except while saving) so a login
   finished in a terminal is picked up.
 - It is declared after `chatWin`, so it renders above the chat.
+
+### About dialog
+
+`aboutWin` is a fourth fullscreen `PanelWindow` masked to `AboutDialog`:
+
+- Visible only when `aboutOpen`; opened from the tray or IPC `about`.
+- Shows the happy pose, project description, author, repository link and the
+  MIT license link. Escape or `✕` closes it.
+- Declared last, so it renders above the account dialog.
 
 ## Theme
 

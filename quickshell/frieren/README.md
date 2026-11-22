@@ -18,8 +18,18 @@ change the system. She also has a real system tray icon with a settings menu.
 - Click the pet without dragging: opens or closes the chat.
 - `SUPER + SHIFT + R`: opens the chat from anywhere.
 - `Esc` or `✕`: closes the chat. `＋`: new conversation. `■`: stops the current run.
+- The chat renders Markdown: headings, lists, quotes, inline code, fenced code
+  blocks and links. Code blocks have their own box with a copy button.
+- Click and drag over any message to select it. A copy button appears on hover
+  for the whole reply, and every code block and command has its own copy icon.
+- `≡` opens the history of past conversations. Click one to reopen it, `✕`
+  deletes it. Scrolling up while she writes no longer drags the view back down;
+  `↓ Latest` returns to the end.
+- Tray → **About** shows the project, the author, the happy pose, the repository
+  and the MIT license.
 - The conversation keeps context across restarts: the opencode session ID is
-  stored in the state file.
+  stored in the state file, and its messages are restored from the local
+  database.
 
 IPC:
 
@@ -30,11 +40,13 @@ qs -c frieren ipc call frieren fresh
 qs -c frieren ipc call frieren stop
 qs -c frieren ipc call frieren hide
 qs -c frieren ipc call frieren auth
+qs -c frieren ipc call frieren about
 qs -c frieren ipc call frieren minimize
 qs -c frieren ipc call frieren restore
 qs -c frieren ipc call frieren wander toggle
 qs -c frieren ipc call frieren sleep toggle
 qs -c frieren ipc call frieren blink toggle
+qs -c frieren ipc call frieren log toggle
 qs -c frieren ipc call frieren scale 1.15
 qs -c frieren ipc call frieren resetpos
 qs -c frieren ipc call frieren ping
@@ -49,11 +61,11 @@ DBusMenu:
 
 - `Show / Hide pet`
 - `Open / Close chat`
-- `New conversation`
 - `Stop` (enabled while opencode is busy)
 - `Setup account` when not connected, `Account` when connected
-- `Settings` → `Wander`, `Sleep when idle`, `Blink`, `Size` (small, medium,
-  large), `Reset position`
+- `Settings` → `Wander`, `Sleep when idle`, `Blink`, `Activity log`, `Size`
+  (small, medium, large), `Reset position`
+- `About` (project, author, happy Frieren, repository and MIT license)
 - `Quit`
 
 The helper uses only GIO/GDBus, starts with the shell, and uses a fixed bus name
@@ -107,6 +119,61 @@ opencode run --format json --model opencode-go/deepseek-v4.1-flash \
 - To change the model: edit `modelName` in `shell.qml` and `model` in the agent
   markdown, or ask the agent to use another provider.
 
+## History and activity log
+
+Both live in `~/.local/state/frieren/frieren.db` (SQLite; the `sqlite3` CLI is
+required). The chat talks to it through `sqlite3`, so QML does not need a
+database driver.
+
+History:
+
+- `conversations` keeps the last 60 conversations (`id`, `title`, `created_at`,
+  `updated_at`). `messages` keeps up to 150 messages per conversation (`role`,
+  `text`, `command`, `output`, `status`, `ts`). Only conversations with at
+  least one question are stored.
+- On startup the chat reopens the conversation of the saved opencode session.
+  A fresh conversation (no session id yet) starts empty.
+- `≡` lists every conversation with its first question, how many questions it
+  has and when it was last used. Opening one switches the opencode session, so
+  the next message continues that conversation.
+- `history.json` from older versions is imported once and renamed to
+  `history.json.migrated`.
+
+Activity log (for a dashboard):
+
+- Every finished turn and every finished tool call is sent to
+  `hooks/frieren-log.sh` over stdin. The hook appends the raw JSON line to
+  `~/.local/state/frieren/events.jsonl` and writes the same row to
+  `frieren.db`:
+
+  | Table / view | Columns |
+  | --- | --- |
+  | `conversations` | `id`, `title`, `created_at`, `updated_at` |
+  | `messages` | `conversation_id`, `role`, `text`, `command`, `output`, `status`, `ts` |
+  | `turns` | `ts`, `session`, `prompt`, `duration_ms`, `exit_code`, `ok`, `tools_total`, `tools_failed`, `error`, `model` |
+  | `tools` | `ts`, `session`, `tool`, `command`, `status`, `ok`, `duration_ms` |
+  | `daily` (view) | `day`, `turns`, `ok_turns`, `ok_pct`, `avg_ms`, `tool_failures` |
+
+- `ok` is `exit_code = 0` and no failed tool and no error event. A stopped run
+  is recorded with `exit_code = -1` and `error = "stopped"`.
+- Disable the activity rows with tray → `Settings` → `Activity log`, or
+  `qs -c frieren ipc call frieren log false`. History keeps working.
+- `events.jsonl` grows with every event and is never rotated; delete it whenever
+  you want to start over. `frieren.db` is independent and safe to keep.
+
+```bash
+# success rate per day
+sqlite3 ~/.local/state/frieren/frieren.db "select * from daily order by day desc limit 14;"
+
+# slowest turns
+sqlite3 ~/.local/state/frieren/frieren.db \
+  "select prompt, duration_ms from turns order by duration_ms desc limit 10;"
+
+# stored conversations
+sqlite3 ~/.local/state/frieren/frieren.db \
+  "select id, title, updated_at from conversations order by updated_at desc;"
+```
+
 ## Animations
 
 The six poses live in `assets/poses/` (`idle`, `think`, `cast`, `happy`, `sad`,
@@ -126,11 +193,17 @@ exclamation bubble on error, floating `z`s while sleeping, and wandering.
 ├── shell.qml                  # windows, opencode backend, state, IPC
 ├── tray.c                     # native StatusNotifierItem + DBusMenu helper
 ├── frieren-tray               # compiled by install.sh (not in git)
+├── hooks/
+│   └── frieren-log.sh         # activity hook (JSONL + optional SQLite)
 ├── components/
 │   ├── PetSprite.qml          # poses, animation, drag
-│   ├── ChatPanel.qml          # chat bubble
-│   ├── AuthDialog.qml         # OpenCode account dialog
-│   └── MessageBubble.qml      # messages and tool blocks
+│   ├── ChatPanel.qml          # chat bubble, scroll lock, history toggle
+│   ├── MessageBubble.qml      # messages and tool blocks
+│   ├── MarkdownText.qml       # Markdown blocks, code boxes, copy buttons
+│   ├── CopyButton.qml         # clipboard button with a check mark
+│   ├── HistoryPanel.qml       # list of past conversations
+│   ├── AboutDialog.qml        # project, author, repository and license
+│   └── AuthDialog.qml         # OpenCode account dialog
 ├── assets/
 │   ├── frieren-icon.png       # tray icon and chat avatar
 │   ├── frieren-icon-*.argb    # raw icon buffers
@@ -157,6 +230,9 @@ Autostart: a block at the end of `~/.config/hypr/hyprland.lua`
 - The account dialog is a third fullscreen `PanelWindow` masked to the card. It
   polls the account status every 4 seconds while open, so terminal logins are
   picked up without reopening it.
+- The About dialog is a fourth masked window, opened from the tray. It shows
+  the happy pose, the author, the repository and the MIT license, and closes
+  with Escape or its `✕`.
 - The `stdin` of the process is closed with `< /dev/null`: if opencode sees an
   open pipe it waits for EOF and hangs.
 - When opencode exits with a quota error, the message appears in the chat.
@@ -167,6 +243,21 @@ Autostart: a block at the end of `~/.config/hypr/hyprland.lua`
   wakeup.
 - State writes go to `state.json.tmp` and are moved into place, so the helper
   never reads a partial file.
+- Chat history uses SQLite (`frieren.db`). SQL and JSON payloads go over
+  `sqlite3` stdin, so long conversations never hit the argv limit. A
+  `busy_timeout` covers concurrent writes from the activity hook.
+- The chat list follows the end only while it is already at the end. Scrolling
+  up sets `follow = false`; streaming text then grows the content without
+  moving the view, and `↓ Latest` restores the lock. A `contentY` decrease
+  caused by the first layout or a window resize is ignored.
+- Markdown is parsed in `MarkdownText.qml` because Qt has no Markdown document.
+  Fenced code blocks become a monospace box with a copy button; prose uses
+  Qt's rich text subset. Text is selectable because the blocks are read-only
+  `TextEdit` items (`Text` has no mouse selection in Qt 6).
+- Copying uses `Quickshell.clipboardText`, so it works under any Wayland
+  compositor without `wl-copy`.
+- `MessageBubble.qml` keeps the full reply copy button in the delegate's right
+  margin, so it never covers the text and does not reserve height.
 - If the keyboard does not take focus when the chat opens, change it to
   `WlrKeyboardFocus.Exclusive` in `shell.qml` (it blocks the global keyboard
   while open).

@@ -27,7 +27,6 @@
 
 #define ID_TOGGLE_PET 1
 #define ID_CHAT 2
-#define ID_FRESH 3
 #define ID_STOP 4
 #define ID_SEP_1 5
 #define ID_SETTINGS 6
@@ -42,12 +41,15 @@
 #define ID_SEP_2 15
 #define ID_QUIT 16
 #define ID_AUTH 17
+#define ID_LOG 18
+#define ID_ABOUT 19
 
 typedef struct {
     gboolean minimized;
     gboolean wander;
     gboolean sleep;
     gboolean blink;
+    gboolean log;
     gboolean auth;
     gboolean busy;
     gboolean chatOpen;
@@ -204,6 +206,7 @@ static void read_state(App *app) {
     app->state.wander = json_bool(data, "wander", app->state.wander);
     app->state.sleep = json_bool(data, "sleep", app->state.sleep);
     app->state.blink = json_bool(data, "blink", app->state.blink);
+    app->state.log = json_bool(data, "log", app->state.log);
     app->state.auth = json_bool(data, "auth", app->state.auth);
     app->state.busy = json_bool(data, "busy", app->state.busy);
     app->state.chatOpen = json_bool(data, "chatOpen", app->state.chatOpen);
@@ -246,8 +249,6 @@ static GVariant *props_for_id(App *app, gint32 id) {
             return item_props(s->minimized ? "Show pet" : "Hide pet", TRUE, NULL, NULL, NULL, 0);
         case ID_CHAT:
             return item_props(s->chatOpen ? "Close chat" : "Open chat", TRUE, NULL, NULL, NULL, 0);
-        case ID_FRESH:
-            return item_props("New conversation", TRUE, NULL, NULL, NULL, 0);
         case ID_STOP:
             return item_props("Stop", s->busy, NULL, NULL, NULL, 0);
         case ID_SEP_1:
@@ -261,6 +262,8 @@ static GVariant *props_for_id(App *app, gint32 id) {
             return item_props("Sleep when idle", TRUE, NULL, NULL, "checkmark", s->sleep ? 1 : 0);
         case ID_BLINK:
             return item_props("Blink", TRUE, NULL, NULL, "checkmark", s->blink ? 1 : 0);
+        case ID_LOG:
+            return item_props("Activity log", TRUE, NULL, NULL, "checkmark", s->log ? 1 : 0);
         case ID_SIZE:
             return item_props("Size", TRUE, "submenu", "submenu", NULL, 0);
         case ID_SMALL:
@@ -272,6 +275,8 @@ static GVariant *props_for_id(App *app, gint32 id) {
             return item_props("Large", TRUE, NULL, NULL, "radio", s->scale >= 1.08 ? 1 : 0);
         case ID_RESET:
             return item_props("Reset position", TRUE, NULL, NULL, NULL, 0);
+        case ID_ABOUT:
+            return item_props("About", TRUE, NULL, NULL, NULL, 0);
         case ID_QUIT:
             return item_props("Quit", TRUE, NULL, NULL, NULL, 0);
         case ID_AUTH:
@@ -303,11 +308,11 @@ static GVariant *children_of(App *app, const gint32 *ids, gsize count) {
 
 static GVariant *build_node(App *app, gint32 id) {
     static const gint32 root_children[] = {
-        ID_TOGGLE_PET, ID_CHAT, ID_FRESH, ID_STOP, ID_SEP_1,
-        ID_AUTH, ID_SETTINGS, ID_SEP_2, ID_QUIT
+        ID_TOGGLE_PET, ID_CHAT, ID_STOP, ID_SEP_1,
+        ID_AUTH, ID_SETTINGS, ID_ABOUT, ID_SEP_2, ID_QUIT
     };
     static const gint32 settings_children[] = {
-        ID_WANDER, ID_SLEEP, ID_BLINK, ID_SIZE, ID_RESET
+        ID_WANDER, ID_SLEEP, ID_BLINK, ID_LOG, ID_SIZE, ID_RESET
     };
     static const gint32 size_children[] = {ID_SMALL, ID_MEDIUM, ID_LARGE};
 
@@ -438,7 +443,7 @@ static void emit_state_changed(App *app) {
 
     static const gint32 dynamic_ids[] = {
         ID_TOGGLE_PET, ID_CHAT, ID_STOP, ID_AUTH,
-        ID_WANDER, ID_SLEEP, ID_BLINK,
+        ID_WANDER, ID_SLEEP, ID_BLINK, ID_LOG,
         ID_SMALL, ID_MEDIUM, ID_LARGE
     };
     GVariantBuilder updated;
@@ -632,9 +637,6 @@ static void activate(App *app, gint32 id) {
         case ID_CHAT:
             spawn_ipc(app, "toggle", NULL);
             break;
-        case ID_FRESH:
-            spawn_ipc(app, "fresh", NULL);
-            break;
         case ID_STOP:
             spawn_ipc(app, "stop", NULL);
             break;
@@ -647,6 +649,9 @@ static void activate(App *app, gint32 id) {
         case ID_BLINK:
             spawn_ipc(app, "blink", "toggle");
             break;
+        case ID_LOG:
+            spawn_ipc(app, "log", "toggle");
+            break;
         case ID_SMALL:
             spawn_ipc(app, "scale", "0.85");
             break;
@@ -658,6 +663,9 @@ static void activate(App *app, gint32 id) {
             break;
         case ID_RESET:
             spawn_ipc(app, "resetpos", NULL);
+            break;
+        case ID_ABOUT:
+            spawn_ipc(app, "about", NULL);
             break;
         case ID_AUTH:
             spawn_ipc(app, "auth", NULL);
@@ -775,6 +783,7 @@ int main(int argc, char **argv) {
     app.state.wander = TRUE;
     app.state.sleep = TRUE;
     app.state.blink = TRUE;
+    app.state.log = TRUE;
     app.state.scale = 1.0;
     app.revision = 1;
 

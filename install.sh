@@ -55,6 +55,9 @@ Environment:
 Build requirements: a C compiler, pkg-config and the gio-2.0 headers
 (gcc, pkgconf and glib2 on Arch). The installer compiles the tray helper.
 
+Runtime requirement: sqlite3 (package: sqlite on Arch) for the chat history
+and the activity log in ~/.local/state/frieren/frieren.db.
+
 When piped into bash, pass options with bash -s --:
 
   curl -fsSL .../install.sh | bash -s -- --force
@@ -158,12 +161,16 @@ fi
 locate_sources
 
 for file in quickshell/frieren/shell.qml quickshell/frieren/tray.c \
+  quickshell/frieren/hooks/frieren-log.sh \
   tools/frieren-launch.sh opencode/agents/frieren.md; do
   [ -f "$ROOT/$file" ] || die "missing file in the release: $file"
 done
 
 command -v qs >/dev/null 2>&1 || \
   die "quickshell is missing (package: quickshell, binary: qs)"
+
+command -v sqlite3 >/dev/null 2>&1 || \
+  die "sqlite3 is required for chat history and the activity log (package: sqlite)"
 
 command -v opencode >/dev/null 2>&1 || \
   echo "warning: opencode is not in PATH. The pet opens, but chat will not respond." >&2
@@ -188,6 +195,10 @@ echo "Installing Frieren..."
 mkdir -p "$QS_DIR" "$OC_DIR" "$APP_DIR" "$ICON_DIR" "$BIN"
 cp -R "$ROOT/quickshell/frieren/." "$QS_DIR/"
 note "config: $QS_DIR"
+
+install -m 755 "$ROOT/quickshell/frieren/hooks/frieren-log.sh" \
+  "$QS_DIR/hooks/frieren-log.sh"
+note "activity hook: $QS_DIR/hooks/frieren-log.sh"
 
 install -m 755 "$TRAY_TMP" "$QS_DIR/frieren-tray"
 rm -f "$TRAY_TMP"
@@ -252,6 +263,9 @@ Try it now:
 
 Fresh install: open the tray icon and choose "Setup account" to add your API
 key, or use Terminal login for providers that need a browser.
+
+Chat history and the activity log share ~/.local/state/frieren/frieren.db.
+Inspect it with: sqlite3 ~/.local/state/frieren/frieren.db ".tables"
 
 Before using it, check the model in opencode/agents/frieren.md and in
 quickshell/frieren/shell.qml (modelName): it must be one your account can pay for.

@@ -39,9 +39,12 @@ skills cannot know.
 | Task | Touch these files |
 | --- | --- |
 | Pet behavior, timers, new pose | `components/PetSprite.qml`, `assets/poses/poses.json`, `assets/poses/*.png` |
-| Chat UI | `components/ChatPanel.qml`, `components/MessageBubble.qml` |
+| Chat UI | `components/ChatPanel.qml`, `components/MessageBubble.qml`, `components/MarkdownText.qml`, `components/HistoryPanel.qml`, `components/CopyButton.qml` |
+| Conversation history | `shell.qml` (`saveHistory`, `requestConversation`, `adoptSessionId`, `applyHistoryList`, `migrateLegacyHistory`), `components/HistoryPanel.qml` |
+| Activity log / dashboard | `shell.qml` (`emitEvent`, `logTurn`), `hooks/frieren-log.sh` |
 | Backend, events, sessions | `shell.qml` (`send`, `handleLine`, `upsertTool`, `Process agent`) |
 | OpenCode account | `shell.qml` (auth properties and processes), `components/AuthDialog.qml`, `tray.c` |
+| About dialog | `components/AboutDialog.qml`, `shell.qml` (`aboutWin`, IPC `about`), `tray.c` |
 | State or settings | `shell.qml` (`loadState`, `saveState`, `statePath`), `tray.c` |
 | Tray menu | `tray.c`, `.opencode/skills/frieren-pet/references/state-tray-ipc.md` |
 | IPC | `shell.qml` (`IpcHandler`), `quickshell/frieren/README.md` |
@@ -85,9 +88,32 @@ skills cannot know.
 ### Change the chat
 
 - `MessageBubble.qml` renders four roles: `user`, `assistant`, `tool` and `system`.
-- Keep `Text.PlainText` only if Markdown rendering is intentionally out of scope.
+- `MarkdownText.qml` is the only Markdown renderer: fenced code blocks become a
+  monospace box with a copy button, prose uses Qt's rich text subset. Qt has no
+  Markdown document.
+- Keep text selectable: use a read-only `TextEdit` with `selectByMouse`.
+  `Text` has no mouse selection in Qt 6.
+- Copy actions use `Quickshell.clipboardText`; do not depend on `wl-copy`.
+- The scroll lock lives in `ChatPanel.qml` (`list.follow`). Never add an
+  unconditional `positionViewAtEnd` on count or content height: it fights the
+  user when they scroll up.
 - The input is a single-line `TextInput`. Multi-line support needs a new design.
 - Do not block the whole panel while `busy`; only the input is disabled.
+- `HistoryPanel.qml` receives `conversations` and emits `open` / `remove`.
+  Opening a conversation switches the opencode session.
+- History is stored in SQLite, in the same `frieren.db` as the activity log.
+  QML drives the `sqlite3` CLI and sends SQL over stdin. `sqlite3` is a runtime
+  requirement (`install.sh` checks it).
+
+### Add an activity event
+
+1. Call `root.emitEvent({ event: "name", ts: new Date().toISOString(), ... })`.
+2. Add one `INSERT ... SELECT` to `hooks/frieren-log.sh`, guarded by
+   `json_extract('$json', '$.event') = 'name'`.
+3. Create the table with `CREATE TABLE IF NOT EXISTS`, and add a dashboard view
+   if the event deserves one.
+4. Reinstall so the hook reaches `~/.config/quickshell/frieren/hooks/`.
+5. Check `events.jsonl` and `sqlite3 ~/.local/state/frieren/frieren.db`.
 
 ## Verification
 
@@ -106,6 +132,21 @@ Manual checklist and failure diagnosis: `references/verification.md`.
   conversation. See `references/opencode-backend.md` before changing `stop`,
   `fresh` or `handleLine`.
 - `toolActive` must be cleared even when a tool never reports a final state.
+- `Text` cannot be selected with the mouse. Use read-only `TextEdit`; code blocks
+  and the tool log are their own copies, not `Text.PlainText`.
+- `history.json` is gone: conversations and messages live in `frieren.db`
+  (`conversations`, `messages`). The old file is imported once and renamed to
+  `history.json.migrated`.
+- History is keyed by `activeConvId`. If you set `sessionId` directly instead
+  of calling `adoptSessionId()`, the open conversation duplicates.
+- SQL and JSON payloads for history go over `sqlite3` stdin, never argv.
+- The activity hook lives at the installed path, not the repo path. Editing
+  `hooks/frieren-log.sh` requires `install.sh` before it runs.
+- `restoreChatFromHistory()` only reopens the saved session. A fresh session
+  must stay empty.
+- Qt sets a bogus `contentY` during the first hidden layout. The scroll lock
+  must ignore `contentY` decreases while the list height changes, or the chat
+  shows `↓ Latest` immediately.
 - Animations and timers keep running while the pet is minimized unless you
   gate them.
 - Wandering falls back to `idle` because there is no `walk` pose yet.

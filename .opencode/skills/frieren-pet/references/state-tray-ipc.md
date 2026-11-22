@@ -16,6 +16,7 @@ place with `sh -c`, so readers never see a partial file.
 | `wander` | bool | tray, IPC | startup, tray | Autonomous movement |
 | `sleep` | bool | tray, IPC | startup, tray | Sleep when idle |
 | `blink` | bool | tray, IPC | startup, tray | Blinking |
+| `log` | bool | tray, IPC | startup, tray | Activity log hook |
 | `scale` | number | tray, IPC | startup, tray | 0.7 to 1.4 |
 | `auth` | bool | auth check | tray | opencode account connected |
 | `busy` | bool | busy changes | none | Snapshot for debugging |
@@ -37,6 +38,30 @@ writes it, the tray reads it for the menu label, and `stateLoaded` gates the
 first save. Without that gate, a fast auth check can write defaults over the
 loaded session and position.
 
+## History and the activity hook
+
+- History lives in SQLite at `~/.local/state/frieren/frieren.db`, in the same
+  file as the activity log. Tables: `conversations` (`id`, `title`,
+  `created_at`, `updated_at`) and `messages` (`conversation_id`, `role`,
+  `text`, `command`, `output`, `status`, `ts`). Up to 60 conversations and 150
+  messages each; tool output is cut to 1500 characters.
+- QML drives the `sqlite3` CLI. Schema, queries and JSON payloads go over the
+  processes' stdin, and the writers set `.timeout 5000` (with WAL from the
+  hook) so history saves and activity events can overlap.
+- Key the conversation with `root.activeConvId`, not `root.sessionId`. opencode
+  can replace the session id on the first event of a run, and
+  `adoptSessionId()` renames the open row so the list does not duplicate.
+- The chat is restored only when `state.json` has a session id that matches a
+  stored conversation. A fresh session (empty id) starts with an empty chat.
+- `history.json` from older installs is imported once at startup and renamed to
+  `history.json.migrated`.
+- `hooks/frieren-log.sh` receives one JSON event per line on stdin from
+  `root.emitEvent()`. It appends the raw line to `events.jsonl` and inserts into
+  `frieren.db` (`turns`, `tools`, `daily`). `install.sh` copies it to
+  `~/.config/quickshell/frieren/hooks/`; editing the repo copy alone does not
+  change the installed hook.
+- `sqlite3` is a runtime requirement: the installer fails without it.
+
 ## Tray helper
 
 `tray.c`, compiled to `frieren-tray`, registers
@@ -54,13 +79,13 @@ It writes nothing itself: every action calls `qs -c frieren ipc call frieren`.
 | --- | --- | --- |
 | 1 | Show pet / Hide pet | `restore` or `minimize` |
 | 2 | Open chat / Close chat | `toggle` |
-| 3 | New conversation | `fresh` |
 | 4 | Stop | `stop`, enabled only while busy |
 | 5 | Separator | none |
 | 6 | Settings submenu | none |
 | 7 | Wander | `wander toggle` |
 | 8 | Sleep when idle | `sleep toggle` |
 | 9 | Blink | `blink toggle` |
+| 18 | Activity log | `log toggle` |
 | 10 | Size submenu | none |
 | 11 | Small | `scale 0.85` |
 | 12 | Medium | `scale 1.0` |
@@ -69,9 +94,11 @@ It writes nothing itself: every action calls `qs -c frieren ipc call frieren`.
 | 15 | Separator | none |
 | 16 | Quit | `quit` |
 | 17 | Account / Setup account | `auth` |
+| 19 | About | `about` |
 
-Keep IDs stable. `notify_state()` sends updates only for IDs 1, 2, 4, 7, 8, 9,
-11 to 13 and 17. Add new toggle or radio IDs to that list.
+Keep IDs stable. ID 3 (`New conversation`) was retired; do not reuse it for a
+different item. `notify_state()` sends updates only for IDs 1, 2, 4, 7, 8, 9,
+18, 11 to 13 and 17. Add new toggle or radio IDs to that list.
 
 ### Toggle type rules
 
@@ -128,12 +155,14 @@ The handler target is `frieren`.
 | `stop` | none | Stop the current run |
 | `hide` | none | Close the chat |
 | `auth` | none | Open the OpenCode account dialog |
+| `about` | none | Open the About dialog |
 | `ping` | none | Return `pong` |
 | `minimize` | none | Hide the pet to the tray |
 | `restore` | none | Show the pet |
 | `wander` | `toggle` or `true` or `false` | Set wandering |
 | `sleep` | `toggle` or `true` or `false` | Set sleep when idle |
 | `blink` | `toggle` or `true` or `false` | Set blinking |
+| `log` | `toggle` or `true` or `false` | Set the activity log hook |
 | `scale` | number | Set scale, clamped to 0.7 to 1.4 |
 | `resetpos` | none | Move to the default corner |
 | `quit` | none | Quit the shell |

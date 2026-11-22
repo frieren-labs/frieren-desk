@@ -91,6 +91,29 @@ derive the flag from the latest tool state.
 opencode exits 0 even when a tool failed, so success is not proof that the task
 worked. Prefer the event stream when deciding the final mood.
 
+## History and activity
+
+- `send()` adds the user message, calls `saveHistory()` and resets the turn
+  telemetry (`turnPrompt`, `turnStarted`, `turnTools`, `turnToolFails`,
+  `turnError`, `toolStartTimes`, `toolFinished`).
+- `upsertTool()` emits one `tool` event the first time a part reports a final
+  status. The duration comes from its first `running` or `pending` event.
+- `onExited` and `stopAgent()` call `logTurn()` once per turn. `ok` means exit
+  0, no error event and no failed tool, so a failed tool still counts as a
+  failure even though opencode exits 0. A stopped run uses `exit_code = -1`.
+- `emitEvent()` pushes one JSON string per event into `hookQueue`; a single
+  `Process` writes the payload to `hooks/frieren-log.sh` over stdin. Never put
+  event payloads in argv. The queue keeps a turn from blocking on the hook.
+- `emitEvent()` returns early when `logEnabled` is false (tray or IPC).
+- History rows are keyed by `activeConvId`, not `sessionId`. `adoptSessionId()`
+  renames the open conversation in `frieren.db` when opencode assigns the real
+  id; without it the first turn lands under a stale id and the list duplicates.
+- The transcript is restored only for the saved session id. Do not restore the
+  newest conversation for a fresh session.
+- History and the activity log share `frieren.db`. History writes go through
+  `sqlite3` with the SQL on stdin; history and the hook can write at the same
+  time, so keep the busy timeout.
+
 ## Stop and fresh races
 
 `stopAgent()` sets `agent.running = false` and immediately clears `busy` and
