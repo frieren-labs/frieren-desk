@@ -21,16 +21,6 @@ curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/ins
 Then open **Frieren** from the app menu, or run `~/.local/bin/frieren`. The
 opencode account is configured from the tray menu after install.
 
-The gallery below shows it all: chat with Markdown and copy buttons, slash
-commands, activity panel, model picker, voice replies, tray menu and dialogs.
-
-- Helpers: `frieren-ask` (quick prompt), `frieren-shot` (screenshot into chat),
-  `frieren-stats` (terminal dashboard), `frieren-weekly` (AI week review),
-  `frieren-backup` (hot-copy the database).
-- Local data lives under `~/.local/state/frieren/` (`frieren.db` for chat
-  history and the activity log, `state.json` for runtime state);
-  `~/.config/frieren/settings.json` pins model, agent, toggles and scale.
-
 ## What it looks like
 
 ![Frieren poses with the chat panel open](assets/poses-preview.png)
@@ -45,9 +35,6 @@ commands, activity panel, model picker, voice replies, tray menu and dialogs.
 | `celebrate` | third clean turn in a row | `amazing!` |
 | `sad` | an error came back | `oops…` |
 | `sleep` | idle for a while with sleep enabled | `zzz…` |
-
-The image shows the real sprites from `quickshell/frieren/assets/poses/`, so it
-matches what you get after install.
 
 ### In action (real screenshots)
 
