@@ -49,7 +49,9 @@ opencode account is configured from the tray menu after install.
 | `idle` | waiting, or wandering around | `ask me something` |
 | `think` | opencode is reasoning | `thinking…` |
 | `cast` | a tool is running | `casting a spell…` |
+| `reading` | a read-like tool is running | `reading…` |
 | `happy` | a task finished, or she wakes up | `done` |
+| `celebrate` | third clean turn in a row | `amazing!` |
 | `sad` | an error came back | `oops…` |
 | `sleep` | idle for a while with sleep enabled | `zzz…` |
 
@@ -69,6 +71,7 @@ matches what you get after install.
 | Source sprite sheet (art reference) | `assets/frieren-sheet.png` |
 | Sprite prompt for new poses | `assets/SPRITE_PROMPT.md` |
 | Tray icon pipeline (development) | `tools/make_icon.sh` |
+| Poses preview image (development) | `tools/make_preview.sh` (needs ImageMagick + DejaVu) |
 | Hyprland bind and autostart | `hypr/frieren.lua` |
 | Installer and app menu launcher | `install.sh`, `tools/frieren-launch.sh` |
 
