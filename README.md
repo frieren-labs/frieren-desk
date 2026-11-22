@@ -21,25 +21,6 @@ curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/ins
 Then open **Frieren** from the app menu, or run `~/.local/bin/frieren`. The
 opencode account is configured from the tray menu after install.
 
-- Click the pet: open or close the chat.
-- Chat replies render Markdown, text is selectable, and code blocks and commands
-- Click the pet: open or close the chat. Double-click: fresh conversation.
-  Right-click: history. Drag files into the chat to attach `@paths`.
-- Header `⛁` exports the open conversation as Markdown; `%` opens the
-  activity panel with the last-14-day table; `◉` dictates from the mic.
-  Inside the box: `/new`, `/retry`, `/export`, `/stats`, `/model`, `/agent`,
-  `/sound`, `/voice`, `/help`, `@window` for Hyprland window context.
-- Sounds, `notify-send` on long turns, spoken replies, quick-ask (`frieren-ask`),
-  screenshot-to-chat (`frieren-shot`), backups and `frieren-weekly`.
-- Config: `~/.config/frieren/settings.json` pins `model`, `agent`, toggles and scale (live).
-- Drag her to the top bar or the bottom dock: minimize to the tray.
-- Click the tray icon: show/hide, chat actions, animation settings and quit.
-- Tray → **About**: project, author, repository and MIT license.
-- State and settings: `~/.local/state/frieren/state.json`.
-- History and local activity log share `${XDG_STATE_HOME:-~/.local/state}/frieren/frieren.db`
-  (SQLite). The raw event stream is also kept in `events.jsonl` (rotated past ~5 MB).
-  `frieren-stats` prints the dashboard (`--json` for scripts).
-
 ## What it looks like
 
 ![Frieren poses with the chat panel open](assets/poses-preview.png)
@@ -55,8 +36,16 @@ opencode account is configured from the tray menu after install.
 | `sad` | an error came back | `oops…` |
 | `sleep` | idle for a while with sleep enabled | `zzz…` |
 
-The image shows the real sprites from `quickshell/frieren/assets/poses/`, so it
-matches what you get after install.
+### In action (real screenshots)
+
+| | |
+| --- | --- |
+| ![Pet on the desktop](assets/showcase/shot-pet.png) | ![Chat with markdown and copy buttons](assets/showcase/shot-chat.png) |
+| On the desktop: click to chat, double-click for a fresh conversation, right-click for history. | Markdown replies, selectable text, copy buttons, slash-command completion. |
+| ![Activity panel](assets/showcase/shot-stats.png) | ![Account dialog](assets/showcase/shot-auth.png) |
+| Activity panel: turns, success rate and average time per day. | Account dialog: API key or terminal login, plus the model picker. |
+| ![About dialog](assets/showcase/shot-about.png) | |
+| About dialog: project, author, repository and license. | |
 
 ## Docs
 
