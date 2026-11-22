@@ -1,4 +1,4 @@
-![Frieren](assets/frieren-banner.png)
+![Frieren Desk cover](assets/frieren-cover.png)
 
 # Frieren Desk
 
