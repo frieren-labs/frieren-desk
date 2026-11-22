@@ -10,6 +10,8 @@ with a settings menu.
 
 ## Install
 
+### For humans
+
 Requires [Quickshell](https://quickshell.org) 0.3+, [opencode](https://opencode.ai)
 v2, Hyprland, Qt 6, `sqlite3` (chat history and activity log), and a C toolchain
 with the `gio` headers (on Arch: `base-devel` plus `glib2`).
@@ -20,6 +22,53 @@ curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/ins
 
 Then open **Frieren** from the app menu, or run `~/.local/bin/frieren`. The
 opencode account is configured from the tray menu after install.
+
+### For agents
+
+Paste this prompt to an agent with shell access on the target machine:
+
+```text
+Install Frieren Desk on this Hyprland machine.
+Repo: https://github.com/jd-apprentice/frieren-desk
+
+1. Check prerequisites and report versions. Fail fast if missing:
+   qs --version (needs Quickshell 0.3+), opencode --version (needs v2),
+   hyprctl version, sqlite3 --version, cc --version,
+   pkg-config --modversion gio-2.0. On Arch the packages are:
+   quickshell, opencode, sqlite, gcc (or base-devel), pkgconf, glib2.
+   If opencode is missing, warn that the pet will open but chat will not respond.
+
+2. Run the installer (add --force only to overwrite
+   ~/.config/opencode/agents/frieren.md):
+   curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash
+
+3. Hook it into the compositor:
+   - If ~/.config/hypr/dms/binds-user.lua exists (DankMaterialShell), add:
+     hl.bind("SUPER + SHIFT + R", hl.dsp.exec_cmd("qs -c frieren ipc call frieren toggle"))
+     and skip the require below.
+   - Otherwise copy hypr/frieren.lua from the repo to ~/.config/hypr/frieren.lua
+     and add require("frieren") at the end of the Hyprland lua config.
+   - For autostart on every login, add:
+     hl.on("hyprland.start", function() hl.exec_cmd("qs -c frieren -n") end)
+
+4. Launch and verify:
+   ~/.local/bin/frieren
+   qs -c frieren ipc call frieren ping
+   The ping must answer. If ~/.local/bin is not in PATH, use the absolute path
+   or the app menu entry.
+
+5. Account setup is manual: tell the user to open the tray icon and choose
+   "Setup account" (API key via opencode auth import, or Terminal login for
+   OAuth flows). Verify with: opencode auth list --format json.
+   An OPENCODE_API_KEY in the environment also counts as connected.
+
+6. Model check: the model in ~/.config/opencode/agents/frieren.md and
+   modelName in ~/.config/quickshell/frieren/shell.qml must be one the
+   account can pay for. Default is opencode-go/deepseek-v4.1-flash.
+
+Do not store API keys in files, argv, or logs. The key travels over stdin
+to opencode auth import only.
+```
 
 ## What it looks like
 
