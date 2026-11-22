@@ -293,6 +293,12 @@ Item {
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
+                    // Ambient theme for delegates. Read through this alias (not
+                    // panel.theme directly): Qt 6.4 qmllint resolves the outer id
+                    // against the delegate root's own properties and reports a
+                    // bogus "not found on QColor" (MessageBubble.panel is a color).
+                    readonly property var rowTheme: panel.theme
+
                     // Follow the end only while the user is already there. Any
                     // upward scroll releases the lock so streaming text cannot
                     // drag the view back down.
@@ -301,7 +307,7 @@ Item {
                     property real lastHeight: 0
 
                     delegate: MessageBubble {
-                        theme: panel.theme
+                        theme: rowTheme
                         role: model.role
                         text: model.text
                         command: model.command
