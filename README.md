@@ -58,6 +58,17 @@ opencode account is configured from the tray menu after install.
 The image shows the real sprites from `quickshell/frieren/assets/poses/`, so it
 matches what you get after install.
 
+### In action (real screenshots)
+
+| | |
+| --- | --- |
+| ![Pet on the desktop](assets/showcase/shot-pet.png) | ![Chat with markdown and copy buttons](assets/showcase/shot-chat.png) |
+| On the desktop: click to chat, double-click for a fresh conversation, right-click for history. | Markdown replies, selectable text, copy buttons, slash-command completion. |
+| ![Activity panel](assets/showcase/shot-stats.png) | ![Account dialog](assets/showcase/shot-auth.png) |
+| Activity panel: turns, success rate and average time per day. | Account dialog: API key or terminal login, plus the model picker. |
+| ![About dialog](assets/showcase/shot-about.png) | |
+| About dialog: project, author, repository and license. | |
+
 ## Docs
 
 | Topic | Where |
