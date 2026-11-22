@@ -19,7 +19,7 @@ Module {
         isCreatable: true
         Property {
             name: "path"
-            type: "string"
+            type: "QString"
             read: "path"
             write: "setPath"
             notify: "pathChanged"
