@@ -1,0 +1,55 @@
+import QtQuick.tooling 1.2
+
+// Hand-written Quickshell.Io/FileView description for CI linting.
+// The real type is defined in FileView.qml upstream, so qmltyperegistrar
+// output has no entry for it and plain -i imports leave its members
+// unknown ("Could not find property"). Keep in sync with the used API
+// only: path, printErrors, watchChanges, text(), onLoaded/onLoadFailed.
+// Anything else used must be added here, or CI correctly fails.
+
+Module {
+    Component {
+        file: "FileView.qml"
+        lineNumber: 1
+        name: "FileView"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        exports: ["Quickshell.Io/FileView 0.0"]
+        exportMetaObjectRevisions: [0]
+        isCreatable: true
+        Property {
+            name: "path"
+            type: "string"
+            read: "path"
+            write: "setPath"
+            notify: "pathChanged"
+            index: 0
+            lineNumber: 1
+        }
+        Property {
+            name: "printErrors"
+            type: "bool"
+            read: "printErrors"
+            write: "setPrintErrors"
+            notify: "printErrorsChanged"
+            index: 1
+            lineNumber: 1
+        }
+        Property {
+            name: "watchChanges"
+            type: "bool"
+            read: "watchChanges"
+            write: "setWatchChanges"
+            notify: "watchChangesChanged"
+            index: 2
+            lineNumber: 1
+        }
+        Method {
+            name: "text"
+            type: "QString"
+            lineNumber: 1
+        }
+        Signal { name: "loaded"; lineNumber: 1 }
+        Signal { name: "loadFailed"; lineNumber: 1 }
+    }
+}
