@@ -35,11 +35,13 @@ jobs:
           [ -n "$BIN" ] || { echo "qmllint not found in qt6-declarative-dev-tools"; exit 1; }
           "$BIN" quickshell/frieren/components/*.qml 2>&1 | tee /tmp/qmllint.log
           # Quickshell is not installed in CI, so [import] warnings for its
-          # modules are environmental noise. Fail on any real warning instead.
-          if grep "Warning:" /tmp/qmllint.log | grep -v "\[import\]" | grep -q .; then
-            echo "real qmllint warnings found (non-import)"; exit 1
+          # modules are environmental noise. [unqualified] fires on idiomatic QML
+          # (delegate modelData, own properties) and on the same missing module.
+          # Fail on any other, real, diagnostic instead.
+          if grep "Warning:" /tmp/qmllint.log | grep -v "\[import\]" | grep -v "\[unqualified\]" | grep -q .; then
+            echo "real qmllint warnings found (non-import, non-unqualified)"; exit 1
           fi
-          echo "clean apart from third-party [import] warnings"
+          echo "clean apart from third-party [import]/[unqualified] warnings"
 
       - name: qmllint shell (informational)
         continue-on-error: true

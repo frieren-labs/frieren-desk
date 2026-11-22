@@ -74,7 +74,8 @@ matches what you get after install.
 
 ## Contributing
 
-PRs welcome. Keep the code and docs in English.
+PRs welcome. Keep the code and docs in English. See [CONTRIBUTING.md](CONTRIBUTING.md)
+and the issue/PR templates in `.github/`.
 
 ## License
 
