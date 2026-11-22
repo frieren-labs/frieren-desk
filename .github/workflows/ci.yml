@@ -28,8 +28,13 @@ jobs:
         run: sudo apt-get install -y qt6-declarative-dev-tools
 
       - name: qmllint components
-        run: qmllint quickshell/frieren/components/*.qml
+        run: |
+          BIN=$(dpkg -L qt6-declarative-dev-tools | grep -E '/qmllint$' | head -1)
+          [ -n "$BIN" ] || { echo "qmllint not found in qt6-declarative-dev-tools"; exit 1; }
+          "$BIN" quickshell/frieren/components/*.qml
 
       - name: qmllint shell (informational)
         continue-on-error: true
-        run: qmllint quickshell/frieren/shell.qml || echo "shell.qml lint is informational (missing Quickshell qmltypes)"
+        run: |
+          BIN=$(dpkg -L qt6-declarative-dev-tools | grep -E '/qmllint$' | head -1)
+          [ -n "$BIN" ] && "$BIN" quickshell/frieren/shell.qml || echo "shell.qml lint is informational (missing Quickshell qmltypes)"
