@@ -62,7 +62,8 @@ matches what you get after install.
 | --- | --- |
 | Config, tray menu and animations | `quickshell/frieren/README.md` |
 | Chat history and activity log | `quickshell/frieren/README.md` (History and activity log) |
-| Architecture diagram (interactive) | `.archify/architecture-frieren-desk-20261122-021442/frieren-desk.html` |
+| Architecture diagram (interactive) | `docs/architecture.html` |
+| Project overview page (with sprites) | `docs/overview.html` |
 | OpenCode account setup | tray menu, `quickshell/frieren/components/AuthDialog.qml`, `shell.qml` |
 | Persona, permissions and command denylist | `opencode/agents/frieren.md` |
 | Source sprite sheet (art reference) | `assets/frieren-sheet.png` |
