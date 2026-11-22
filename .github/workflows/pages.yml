@@ -1,0 +1,54 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: copy artwork into the site
+        run: |
+          mkdir -p site/assets/img/poses site/assets/audio site/assets/overlay
+          cp assets/hero-bg.jpg site/assets/img/
+          cp assets/overlay/*.mp4 site/assets/overlay/
+          cp assets/page-music.mp3 site/assets/audio/
+          cp assets/showcase/*.png site/assets/img/
+          cp quickshell/frieren/assets/frieren-icon.png site/assets/img/
+          cp quickshell/frieren/assets/poses/*.png site/assets/img/poses/
+          ls -R site/assets/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./site
+          destination: ./_site
+
+      - uses: actions/upload-pages-artifact@v4
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% seo %}
+  <link rel="icon" type="image/png" href="{{ '/assets/img/frieren-icon.png' | relative_url }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+</head>
+<body>
+  <div class="page-bg" aria-hidden="true">
+    <video class="bg-video" src="{{ '/assets/overlay/birds.mp4' | relative_url }}" muted loop playsinline preload="auto"></video>
+    <video class="bg-video" src="{{ '/assets/overlay/bokeh.mp4' | relative_url }}" muted loop playsinline preload="auto"></video>
+    <video class="bg-video" src="{{ '/assets/overlay/sparks.mp4' | relative_url }}" muted loop playsinline preload="auto"></video>
+    <div class="bg-veil"></div>
+  </div>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="{{ '/' | relative_url }}" aria-label="Frieren Desk home">
+      <img src="{{ '/assets/img/poses/celebrate.png' | relative_url }}" alt="Happy Frieren jumping">
+    </a>
+    <nav class="topnav">
+      <a href="#how-it-works">Spellbook</a>
+      <a href="#install">Summon</a>
+      <a href="#controls">Controls</a>
+      <a href="#helpers">Artifacts</a>
+      <a href="https://github.com/jd-apprentice/frieren-desk">Source</a>
+      <button class="music-btn" id="music-toggle" aria-pressed="false" aria-label="Toggle background music" title="Toggle background music">♪</button>
+    </nav>
+  </header>
+
+  <main>
+    {{ content }}
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <p><strong>Frieren Desk.</strong> MIT licensed. Frieren is a fan-art sprite, the character belongs to Kanehito Yamada and Tsukasa Abe.</p>
+      <p>
+        <a href="https://github.com/jd-apprentice/frieren-desk">Repository</a> ·
+        <a href="https://github.com/jd-apprentice/frieren-desk/issues">Issues</a> ·
+        <a href="https://github.com/jd-apprentice/frieren-desk/blob/main/CONTRIBUTING.md">Contributing</a> ·
+        <a href="https://wallhaven.cc/w/e8vdp8">Hero art: Johann Blais</a> ·
+        <a href="https://www.youtube.com/watch?v=wqZnoVyLDG0">Music: 8Bit</a>
+      </p>
+    </div>
+  </footer>
+
+  <button id="to-top" aria-label="Back to top">↑</button>
+  <audio id="bg-music" loop preload="none" src="{{ '/assets/audio/page-music.mp3' | relative_url }}"></audio>
+
+  <script src="{{ '/assets/js/main.js' | relative_url }}"></script>
+</body>
+</html>
