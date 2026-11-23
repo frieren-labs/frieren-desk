@@ -34,7 +34,7 @@ jobs:
           cp quickshell/frieren/assets/poses/*.png site/assets/img/poses/
           ls -R site/assets/
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       - uses: actions/jekyll-build-pages@v1
         with:
