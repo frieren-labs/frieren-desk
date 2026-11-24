@@ -115,7 +115,7 @@ COLORS = {
     "test": 13623551,
 }
 
-POSE_BASE = ("https://raw.githubusercontent.com/jd-apprentice/"
+POSE_BASE = ("https://raw.githubusercontent.com/frieren-labs/"
              "frieren-desk/main/quickshell/frieren/assets/poses")
 DEFAULT_POSES = {
     "done": POSE_BASE + "/happy.png",

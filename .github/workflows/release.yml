@@ -56,5 +56,5 @@ jobs:
 
           ### Install
           \`\`\`bash
-          curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash
+          curl -fsSL https://raw.githubusercontent.com/frieren-labs/frieren-desk/main/install.sh | bash
           \`\`\`"

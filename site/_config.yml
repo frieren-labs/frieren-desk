@@ -1,8 +1,8 @@
 # Frieren Desk site (Jekyll source for GitHub Pages)
-# Served as a project page: https://jd-apprentice.github.io/frieren-desk
+# Served as a project page: https://frieren-labs.github.io/frieren-desk
 title: Frieren Desk
 description: A chibi Frieren that lives on your Hyprland desktop. Chat with her, she operates the system through opencode.
-url: https://jd-apprentice.github.io
+url: https://frieren-labs.github.io
 baseurl: /frieren-desk
 
 markdown: kramdown
