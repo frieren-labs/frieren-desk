@@ -530,6 +530,310 @@ ShellRoot {
         onExited: (code, status) => root.applySearch(historySearchOut.text)
     }
 
+    // ---------------- reminders (one-shot and recurring) ----------------
+    // Dated rows in frieren.db. A 60s timer fires due rows through notifyTurn
+    // (local + Discord). The opencode agent reads and writes this table
+    // directly for the conversational loop; see opencode/agents/frieren.md.
+    readonly property string reminderSchema: [
+        "CREATE TABLE IF NOT EXISTS reminders (",
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,",
+        "  title TEXT NOT NULL,",
+        "  due_at INTEGER NOT NULL,",
+        "  recurrence TEXT NOT NULL DEFAULT 'once',",
+        "  done INTEGER NOT NULL DEFAULT 0,",
+        "  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
+        ");",
+        "CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(done, due_at);"
+    ].join("\n")
+
+    function queueReminderWrite(sql) {
+        reminderWriter.queue.push(String(sql));
+        if (!reminderWriter.running) reminderWriter.startNext();
+    }
+
+    Process {
+        id: reminderWriter
+        property var queue: []
+        property string sql: ""
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-cmd", ".timeout 5000", root.dbPath]
+        onStarted: {
+            reminderWriter.stdinEnabled = true;
+            reminderWriter.write(reminderWriter.sql);
+            reminderWriter.sql = "";
+            reminderWriter.stdinEnabled = false;
+        }
+        onExited: {
+            reminderWriter.stdinEnabled = true;
+            reminderWriter.startNext();
+        }
+        function startNext() {
+            if (running || queue.length === 0) return;
+            sql = String(queue.shift());
+            running = true;
+        }
+    }
+
+    function dueReminderSql() {
+        return root.reminderSchema
+            + "\nSELECT id, title, recurrence FROM reminders"
+            + " WHERE done = 0 AND due_at <= strftime('%s','now')"
+            + " ORDER BY due_at LIMIT 5;";
+    }
+
+    function checkReminders() {
+        if (reminderDue.running) return;
+        reminderDue.running = true;
+    }
+
+    function applyDueReminders(raw) {
+        let rows = [];
+        try {
+            rows = JSON.parse(String(raw || "[]"));
+        } catch (e) {}
+        if (!Array.isArray(rows)) rows = [];
+        for (let i = 0; i < rows.length; i += 1) {
+            const row = rows[i] || {};
+            root.notifyTurn("Frieren: reminder",
+                String(row.title || "").slice(0, 200), "reminder");
+            const id = parseInt(row.id, 10);
+            if (isNaN(id)) continue;
+            if (row.recurrence === "daily")
+                root.queueReminderWrite(root.reminderSchema
+                    + "\nUPDATE reminders SET due_at = due_at + 86400 WHERE id = " + id + ";");
+            else if (row.recurrence === "weekly")
+                root.queueReminderWrite(root.reminderSchema
+                    + "\nUPDATE reminders SET due_at = due_at + 604800 WHERE id = " + id + ";");
+            else
+                root.queueReminderWrite(root.reminderSchema
+                    + "\nUPDATE reminders SET done = 1 WHERE id = " + id + ";");
+        }
+    }
+
+    Process {
+        id: reminderDue
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
+        stdout: StdioCollector { id: reminderDueOut }
+        onStarted: {
+            reminderDue.stdinEnabled = true;
+            reminderDue.write(root.dueReminderSql());
+            reminderDue.stdinEnabled = false;
+        }
+        onExited: (code, status) => {
+            reminderDue.stdinEnabled = true;
+            if (code === 0) root.applyDueReminders(reminderDueOut.text);
+        }
+    }
+
+    function listReminders() {
+        if (reminderLister.running) return;
+        reminderLister.running = true;
+    }
+
+    function applyReminderList(raw) {
+        let rows = [];
+        try {
+            rows = JSON.parse(String(raw || "[]"));
+        } catch (e) {}
+        if (!Array.isArray(rows) || rows.length === 0) {
+            root.addMessage("system", "No open reminders. Try /remind tomorrow 9am call mom.");
+            return;
+        }
+        const now = Math.floor(Date.now() / 1000);
+        const lines = rows.map(row => {
+            const tag = row.recurrence && row.recurrence !== "once" ? " (" + row.recurrence + ")" : "";
+            const late = Number(row.due_at) < now ? " OVERDUE" : "";
+            return "#" + row.id + " · " + row.due + tag + late + "\n  " + row.title;
+        });
+        root.addMessage("system", lines.join("\n"));
+    }
+
+    Process {
+        id: reminderLister
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
+        stdout: StdioCollector { id: reminderListOut }
+        onStarted: {
+            reminderLister.stdinEnabled = true;
+            reminderLister.write(root.reminderSchema
+                + "\nSELECT id, title, due_at, recurrence,"
+                + " datetime(due_at, 'unixepoch', 'localtime') AS due"
+                + " FROM reminders WHERE done = 0 ORDER BY due_at LIMIT 20;");
+            reminderLister.stdinEnabled = false;
+        }
+        onExited: (code, status) => {
+            reminderLister.stdinEnabled = true;
+            if (code === 0) root.applyReminderList(reminderListOut.text);
+            else root.addMessage("system", "Reminders: could not read the database.");
+        }
+    }
+
+    Timer {
+        interval: 60000
+        running: true
+        repeat: true
+        onTriggered: root.checkReminders()
+    }
+
+    Timer {
+        interval: 8000
+        running: true
+        repeat: false
+        onTriggered: root.checkReminders()
+    }
+
+    // Split "/remind <when> <text>" into its two halves by matching the
+    // leading time expression. Returns {when, text} or {error}.
+    function splitReminderArg(arg) {
+        const s = String(arg || "").trim();
+        if (!s)
+            return { error: "Usage: /remind <when> <text>. Example: /remind tomorrow 9am call mom." };
+        const pats = [
+            /^(in\s+\d+\s*(?:s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hours?|d|day|days))\s+([\s\S]+)$/i,
+            /^((?:daily|every day|weekly|every week)(?:\s+(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*)?(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)\s+([\s\S]+)$/i,
+            /^((?:today|tomorrow|tonight)(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)\s+([\s\S]+)$/i,
+            /^((?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*)(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)\s+([\s\S]+)$/i,
+            /^(\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}(?::\d{2})?)?)\s+([\s\S]+)$/,
+            /^(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s+([\s\S]+)$/i
+        ];
+        for (let i = 0; i < pats.length; i += 1) {
+            const m = s.match(pats[i]);
+            if (m) return { when: m[1], text: m[2].trim() };
+        }
+        return { error: "Could not find a time in that. Usage: /remind <when> <text>. Example: /remind tomorrow 9am call mom." };
+    }
+
+    // Parse a when-expression into {epoch, label, recurrence} or {error}.
+    // Times are local. Past times roll to the next valid slot.
+    function parseReminderWhen(raw) {
+        let s = String(raw || "").trim().toLowerCase();
+        let recurrence = "once";
+        const rm = s.match(/^(daily|every day|weekly|every week)\b\s*(.*)$/);
+        if (rm) {
+            recurrence = (rm[1] === "weekly" || rm[1] === "every week") ? "weekly" : "daily";
+            s = rm[2].trim();
+        }
+        const fail = () => ({ error: "Could not parse \"" + raw + "\". Try: in 2h, today 18:00, tomorrow 9am, friday 9am, 2026-11-25 09:00." });
+        const parseTime = (t) => {
+            if (!t) return null;
+            const mm = String(t).trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+            if (!mm) return null;
+            let h = parseInt(mm[1], 10);
+            const min = mm[2] ? parseInt(mm[2], 10) : 0;
+            if (h > 23 || min > 59) return null;
+            if (mm[3]) {
+                if (h < 1 || h > 12) return null;
+                if (h === 12) h = 0;
+                if (mm[3] === "pm") h += 12;
+            }
+            return { h: h, min: min };
+        };
+        const atTime = (base, t) => {
+            const d = new Date(base.getTime());
+            d.setHours(t.h, t.min, 0, 0);
+            return d;
+        };
+        const fmt = (d) => {
+            const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const p = (n) => (n < 10 ? "0" + n : "" + n);
+            return days[d.getDay()] + " " + mon[d.getMonth()] + " " + d.getDate()
+                + ", " + p(d.getHours()) + ":" + p(d.getMinutes());
+        };
+        const done = (d) => ({ epoch: Math.floor(d.getTime() / 1000), label: fmt(d), recurrence: recurrence });
+        const wnum = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+        let m = s.match(/^in\s+(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hours?|d|day|days)$/);
+        if (m) {
+            const mult = { s: 1, m: 60, h: 3600, d: 86400 }[m[2][0]];
+            return done(new Date(Date.now() + parseInt(m[1], 10) * mult * 1000));
+        }
+        m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(.+))?$/);
+        if (m) {
+            const t = parseTime(m[4] || "9:00");
+            if (!t) return fail();
+            return done(new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1,
+                parseInt(m[3], 10), t.h, t.min, 0));
+        }
+        m = s.match(/^(today|tomorrow|tonight)(?:\s+(.+))?$/);
+        if (m) {
+            const t = parseTime(m[2] || (m[1] === "tonight" ? "21:00" : "9:00"));
+            if (!t) return fail();
+            const base = new Date();
+            if (m[1] === "tomorrow") base.setDate(base.getDate() + 1);
+            let d = atTime(base, t);
+            if (m[1] !== "tomorrow" && d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+            return done(d);
+        }
+        m = s.match(/^(sun|mon|tue|wed|thu|fri|sat)[a-z]*(?:\s+(.+))?$/);
+        if (m) {
+            let rest = (m[2] || "").trim();
+            if (recurrence === "daily") {
+                const wm = rest.match(/^(?:sun|mon|tue|wed|thu|fri|sat)[a-z]*\s*(.*)$/);
+                rest = wm ? wm[1].trim() : rest;
+            }
+            const t = parseTime(rest || "9:00");
+            if (!t) return fail();
+            if (recurrence === "daily") {
+                let d = atTime(new Date(), t);
+                if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+                return done(d);
+            }
+            const target = wnum[m[1].slice(0, 3)];
+            let d = atTime(new Date(), t);
+            let delta = (target - d.getDay() + 7) % 7;
+            if (delta === 0 && d.getTime() <= Date.now()) delta = 7;
+            d.setDate(d.getDate() + delta);
+            return done(d);
+        }
+        const t = parseTime(s === "" ? "9:00" : s);
+        if (t) {
+            if (recurrence === "weekly") return done(new Date(Date.now() + 7 * 86400 * 1000));
+            let d = atTime(new Date(), t);
+            if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+            return done(d);
+        }
+        if (recurrence !== "once" && s === "") {
+            let d = atTime(new Date(), { h: 9, min: 0 });
+            if (recurrence === "weekly") d = new Date(d.getTime() + 7 * 86400 * 1000);
+            else if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+            return done(d);
+        }
+        return fail();
+    }
+
+    function addReminder(whenText, title) {
+        if (!title) {
+            root.addMessage("system", "Usage: /remind <when> <text>. Example: /remind tomorrow 9am call mom.");
+            return;
+        }
+        const p = root.parseReminderWhen(whenText);
+        if (p.error) {
+            root.addMessage("system", p.error);
+            return;
+        }
+        root.queueReminderWrite(root.reminderSchema
+            + "\nINSERT INTO reminders (title, due_at, recurrence) VALUES ("
+            + root.sqlLiteral(title) + ", " + p.epoch + ", '" + p.recurrence + "');");
+        const rep = p.recurrence !== "once" ? " (" + p.recurrence + ")" : "";
+        root.addMessage("system", "Reminder set for " + p.label + rep + ": " + title);
+    }
+
+    function doneReminder(idText) {
+        const id = parseInt(String(idText || "").trim(), 10);
+        if (isNaN(id)) {
+            root.addMessage("system", "Usage: /done <id>. See ids with /tasks.");
+            return;
+        }
+        root.queueReminderWrite(root.reminderSchema
+            + "\nUPDATE reminders SET done = 1 WHERE id = " + id + ";");
+        root.addMessage("system", "Marked reminder #" + id + " as done.");
+    }
+
     // The JSON file used before the database existed. It is imported once and
     // then renamed, so the migration cannot overwrite newer rows.
     FileView {
@@ -1144,7 +1448,7 @@ ShellRoot {
             return true;
         }
         if (cmd === "help") {
-            root.addMessage("system", "Commands: /new, /retry, /export, /stats, /model provider/name, /agent name, /sound on|off, /voice on|off|<id>, /volume 10-150, /discord on|off|test, /help. Prefix with @window to include the focused Hyprland window. Drop files into the chat to attach @paths.");
+            root.addMessage("system", "Commands: /new, /retry, /export, /stats, /model provider/name, /agent name, /sound on|off, /voice on|off|<id>, /volume 10-150, /discord on|off|test, /remind <when> <text>, /tasks, /done <id>, /help. Prefix with @window to include the focused Hyprland window. Drop files into the chat to attach @paths.");
             return true;
         }
         if (cmd === "agent") {
@@ -1187,6 +1491,20 @@ ShellRoot {
                     + (root.discordEnabled ? "on." : "off.")
                     + " /discord on|off|test.");
             }
+            return true;
+        }
+        if (cmd === "remind") {
+            const split = root.splitReminderArg(arg);
+            if (split.error) root.addMessage("system", split.error);
+            else root.addReminder(split.when, split.text);
+            return true;
+        }
+        if (cmd === "tasks" || cmd === "todos") {
+            root.listReminders();
+            return true;
+        }
+        if (cmd === "done") {
+            root.doneReminder(arg);
             return true;
         }
         if (cmd === "model") {
