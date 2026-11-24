@@ -74,6 +74,12 @@ esac
 [ "$MODE" = "test" ] && [ "$TITLE" = "Frieren" ] && TITLE="Frieren test"
 [ "$MODE" = "test" ] && [ -z "$BODY" ] && BODY="Discord webhook is configured. You will see reminders here when away from the PC."
 
+# Never leak the username in notifications: shorten the home dir to ~.
+if [ -n "${HOME:-}" ]; then
+  TITLE="${TITLE//$HOME/\~}"
+  BODY="${BODY//$HOME/\~}"
+fi
+
 # Local desktop notification first. It never depends on the network.
 if command -v notify-send >/dev/null 2>&1; then
   notify-send "$TITLE" "$BODY" >/dev/null 2>&1 || true
