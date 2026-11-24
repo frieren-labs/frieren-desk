@@ -1551,11 +1551,14 @@ ShellRoot {
 
     // Local notify-send plus an optional Discord webhook embed, fanned out
     // by tools/frieren-notify.sh. The webhook URL never travels in argv:
-    // the script reads it from the env file itself.
+    // the script reads it from the env file itself. Title, event and body
+    // travel over stdin: rewriting command in onStarted does not reach the
+    // already started process, so argv would carry stale defaults.
     function notifyTurn(title, body, event) {
         notifier.title = String(title || "Frieren").slice(0, 60);
         notifier.body = String(body || "").slice(0, 200);
         notifier.event = String(event || "info").slice(0, 20);
+        notifier.payload = notifier.title + "\n" + notifier.event + "\n" + notifier.body;
         if (!notifier.running) notifier.running = true;
     }
 
@@ -1570,12 +1573,20 @@ ShellRoot {
         property string title: "Frieren"
         property string body: ""
         property string event: "info"
+        property string payload: ""
         running: false
-        command: ["sh", root.toolsDir + "/frieren-notify.sh",
-            "Frieren", "", "info"]
+        stdinEnabled: true
+        stdout: StdioCollector { id: notifierOut }
+        stderr: StdioCollector { id: notifierErr }
+        command: ["sh", root.toolsDir + "/frieren-notify.sh"]
         onStarted: {
-            notifier.command = ["sh", root.toolsDir + "/frieren-notify.sh",
-                notifier.title, notifier.body, notifier.event];
+            notifier.stdinEnabled = true;
+            notifier.write(notifier.payload);
+            notifier.payload = "";
+            notifier.stdinEnabled = false;
+        }
+        onExited: (code, status) => {
+            notifier.stdinEnabled = true;
         }
     }
 

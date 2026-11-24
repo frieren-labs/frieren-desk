@@ -23,6 +23,7 @@ MODE="send"
 EVENT="info"
 TITLE="Frieren"
 BODY=""
+GOT_ARGS=0
 
 usage() {
   echo "usage: frieren-notify.sh \"title\" \"body\" [event]" >&2
@@ -42,6 +43,7 @@ while [ $# -gt 0 ]; do
     -*) echo "error: unknown flag: $1" >&2; usage ;;
     *)
       if [ "$TITLE" = "Frieren" ] && [ -z "$BODY" ] && [ "$#" -ge 1 ]; then
+        GOT_ARGS=1
         TITLE="$1"; shift
         BODY="${1:-}"; [ $# -gt 0 ] && shift || true
         if [ $# -gt 0 ]; then EVENT="$1"; shift; fi
@@ -51,6 +53,19 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+# QML feeds title/event/body over stdin (line 1: title, line 2: event,
+# rest: body), because rewriting Process.command in onStarted does not reach
+# the already started process. CLI callers keep using argv.
+if [ "$MODE" != "test" ] && [ "$GOT_ARGS" -eq 0 ] && [ ! -t 0 ]; then
+  STDIN_TITLE=""; STDIN_EVENT=""; STDIN_BODY=""
+  IFS= read -r STDIN_TITLE || true
+  IFS= read -r STDIN_EVENT || true
+  STDIN_BODY="$(cat || true)"
+  [ -n "$STDIN_TITLE" ] && TITLE="$STDIN_TITLE"
+  [ -n "$STDIN_EVENT" ] && EVENT="$STDIN_EVENT"
+  [ -n "$STDIN_BODY" ] && BODY="$STDIN_BODY"
+fi
 
 case "$EVENT" in
   done|error|reminder|backup|info|test) ;;
@@ -151,7 +166,7 @@ embed = {
     "footer": {"text": "frieren-desk"},
 }
 if image:
-    embed["image"] = {"url": image}
+    embed["thumbnail"] = {"url": image}
 
 payload = {"username": "Frieren", "embeds": [embed]}
 
