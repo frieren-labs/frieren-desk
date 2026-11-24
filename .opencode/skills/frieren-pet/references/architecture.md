@@ -71,7 +71,7 @@ State changes go to `~/.local/state/frieren/state.json` through
 | File | Owner | Purpose |
 | --- | --- | --- |
 | `state.json` | `saveState()` | Position, session, settings and tray snapshots |
-| `frieren.db` | `shell.qml` + hook | Conversations and messages; turns, tools and the `daily` view |
+| `frieren.db` | `shell.qml` + hook | Conversations and messages; turns, tools and the `daily` view. Read-only web: [frieren-dashboard](https://github.com/frieren-labs/frieren-dashboard) |
 | `events.jsonl` | `hooks/frieren-log.sh` | Raw turn and tool events, always written |
 
 `state.json` is written to a `.tmp` sibling and moved into place. History and

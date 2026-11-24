@@ -296,6 +296,9 @@ frieren-stats 30     # last 30 days
 frieren-stats --json # daily view as JSON
 ```
 
+For a web view of the same data (turns, tools, history, reminders), see
+[frieren-dashboard](https://github.com/frieren-labs/frieren-dashboard).
+
 ```bash
 # success rate per day
 sqlite3 ~/.local/state/frieren/frieren.db "select * from daily order by day desc limit 14;"
