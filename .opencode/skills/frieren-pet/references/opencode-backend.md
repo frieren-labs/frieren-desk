@@ -144,7 +144,9 @@ Do not change stop or fresh without considering this.
 
 The installed agent is `~/.config/opencode/agents/frieren.md`, copied from
 `opencode/agents/frieren.md` by `install.sh`. `install.sh` refuses to overwrite
-an existing agent unless called with `--force`.
+an existing agent unless called with `--force`. After editing the repo agent,
+reinstall with `./install.sh --force` (or copy the file by hand): otherwise
+the live pet keeps the old copy and silently misses the new instructions.
 
 The frontmatter denies a list of destructive shell patterns and secret reads.
 This is a denylist, not a sandbox:

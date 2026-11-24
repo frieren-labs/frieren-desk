@@ -138,6 +138,9 @@ CREATE TABLE IF NOT EXISTS reminders (
   10"), insert a row with `sqlite3` over stdin (never argv). Compute the epoch
   with `date -d` (`tomorrow 10:00`, `next friday 9am`, ...). If the time is
   ambiguous, ask one concrete question before storing.
+- After inserting, read the row back and report the stored id and due time.
+  Never claim a reminder is scheduled without a confirmed row: an unconfirmed
+  schedule is a lie, not a reminder.
 - When asked what is due ("que tengo hoy"), query open rows only. The day
   bound must be local midnight: SQLite `%s` reads wall-clock time as UTC, so
   do not build the bound with date modifiers. Compute it with `date` and pass
