@@ -32,6 +32,7 @@ STATS="$BIN/frieren-stats"
 ASKER="$BIN/frieren-ask"
 SHOT="$BIN/frieren-shot"
 BACKUPER="$BIN/frieren-backup"
+NOTIFIER="$BIN/frieren-notify"
 WEEKLY="$BIN/frieren-weekly"
 VOICER="$BIN/frieren-voice"
 
@@ -118,7 +119,7 @@ uninstall() {
   echo "Removing Frieren..."
   qs -c frieren ipc call frieren quit >/dev/null 2>&1 || true
   rm -rf "$QS_DIR"
-  rm -f "$LAUNCHER" "$STATS" "$ASKER" "$SHOT" "$BACKUPER" "$WEEKLY" "$VOICER" \
+  rm -f "$LAUNCHER" "$STATS" "$ASKER" "$SHOT" "$BACKUPER" "$WEEKLY" "$VOICER" "$NOTIFIER" \
     "$APP_DIR/frieren.desktop" "$ICON_DIR/frieren.png" \
     "$OC_DIR/frieren.md"
   refresh_caches
@@ -172,6 +173,7 @@ for file in quickshell/frieren/shell.qml quickshell/frieren/tray.c \
   quickshell/frieren/hooks/frieren-log.sh \
   quickshell/frieren/tools/frieren-listen.sh \
   quickshell/frieren/tools/frieren-say.sh \
+  quickshell/frieren/tools/frieren-notify.sh \
   tools/frieren-launch.sh tools/frieren-stats.sh tools/frieren-ask.sh \
   tools/frieren-shot.sh tools/frieren-backup.sh tools/frieren-weekly.sh \
   tools/frieren-voice.sh opencode/agents/frieren.md; do
@@ -228,12 +230,14 @@ install -m 755 "$ROOT/tools/frieren-shot.sh" "$SHOT"
 note "screenshot: $SHOT"
 install -m 755 "$ROOT/tools/frieren-backup.sh" "$BACKUPER"
 note "backup: $BACKUPER"
+install -m 755 "$ROOT/quickshell/frieren/tools/frieren-notify.sh" "$NOTIFIER"
+note "notify: $NOTIFIER"
 install -m 755 "$ROOT/tools/frieren-weekly.sh" "$WEEKLY"
 note "weekly: $WEEKLY"
 install -m 755 "$ROOT/tools/frieren-voice.sh" "$VOICER"
 note "voices: $VOICER"
 
-for helper in frieren-listen.sh frieren-say.sh; do
+for helper in frieren-listen.sh frieren-say.sh frieren-notify.sh; do
   install -m 755 "$ROOT/quickshell/frieren/tools/$helper" \
     "$QS_DIR/tools/$helper"
 done

@@ -69,7 +69,8 @@ Drop her on the top bar or bottom dock to minimize her.
 
 ### Voice replies
 Optional spoken answers through Piper, espeak-ng or spd-say, plus UI sounds
-and desktop notifications for long turns.
+and desktop notifications for long turns. Opt in to mirror them to Discord
+as embeds (see below).
 
 </div>
 
@@ -124,6 +125,47 @@ Real screenshots from a running session.
 <figure>
   <img src="{{ '/assets/img/shot-auth.png' | relative_url }}" alt="Account dialog" loading="lazy">
   <figcaption>Account dialog: API key or terminal login, plus the model picker.</figcaption>
+</figure>
+
+</div>
+
+</section>
+
+<section id="notifications" markdown="1">
+<img class="deco" src="{{ '/assets/img/poses/reading.png' | relative_url }}" alt="" aria-hidden="true" loading="lazy">
+
+## Discord notifications
+
+Long turns, errors and backups also land in a Discord channel, as embeds
+with Frieren art per event. Opt-in: save the webhook URL to
+`~/.config/frieren/discord-webhook.env` (mode 600), then `/discord on` and
+`/discord test`. The URL never appears in logs or process lists.
+
+<div class="gallery" markdown="1">
+
+<figure>
+  <img src="{{ '/assets/img/shot-discord-done.png' | relative_url }}" alt="Done notification embed" loading="lazy">
+  <figcaption>Done: how long the turn took and what it was asked to do.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{ '/assets/img/shot-discord-error.png' | relative_url }}" alt="Error notification embed" loading="lazy">
+  <figcaption>Error: what failed, with the same prompt context.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{ '/assets/img/shot-discord-reminder.png' | relative_url }}" alt="Reminder notification embed" loading="lazy">
+  <figcaption>Reminder: violet embed with the think pose.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{ '/assets/img/shot-discord-backup.png' | relative_url }}" alt="Backup notification embed" loading="lazy">
+  <figcaption>Backup: the new file, with the home dir shortened to `~`.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{ '/assets/img/shot-discord-info.png' | relative_url }}" alt="Info notification embed" loading="lazy">
+  <figcaption>Plain notes use the idle pose.</figcaption>
 </figure>
 
 </div>
@@ -199,7 +241,8 @@ links). The history view (`=` icon) lists past conversations with instant title
 search plus full-text search over message bodies from 2 characters.
 
 Slash commands: `/new`, `/retry`, `/export`, `/stats`, `/model provider/name`,
-`/agent name`, `/sound on|off`, `/voice on|off|id`, `/volume 10-150`, `/help`.
+`/agent name`, `/sound on|off`, `/voice on|off|id`, `/volume 10-150`,
+`/discord on|off|test`, `/help`.
 Type `/` for suggestions, `@` for `@window` (appends the focused Hyprland
 window). Drag files or screenshots into the chat to attach their paths.
 `◉` next to the send button dictates from the mic.
@@ -233,7 +276,7 @@ qs -c frieren ipc call frieren quit
 - `Setup account` when not connected, `Account` when connected
 - `Settings` then `Pet` (`Wander`, `Sleep when idle`, `Blink`, `Size`, `Reset position`),
   `Sound & voice` (`Sound`, `Voice replies`, `Voice` radios, `Volume`),
-  `Data` (`Activity log`, `Backup database`)
+  `Data` (`Activity log`, `Backup database`, `Discord alerts`)
 - `About` (project, author, happy Frieren, repository, MIT license)
 - `Quit`
 
@@ -297,7 +340,7 @@ about 5 MB.
 `~/.config/frieren/settings.json`, created on the first change and watched
 live. It wins over `state.json`, so hand-editing applies without reopening
 the pet. Keys: `model`, `agent`, `wander`, `sleep`, `blink`, `log`, `sound`,
-`voice`, `voiceId`, `volume`, `scale` (0.7 to 1.4).
+`voice`, `voiceId`, `volume`, `discord`, `scale` (0.7 to 1.4).
 
 ```json
 {

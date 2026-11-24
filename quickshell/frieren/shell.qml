@@ -60,6 +60,7 @@ ShellRoot {
     property bool logEnabled: true
     property bool soundEnabled: true
     property bool voiceSpeak: false
+    property bool discordEnabled: false
     property string voiceId: "en-jenny"
     property int voiceVolume: 100
     property real petScale: 1.0
@@ -267,6 +268,8 @@ ShellRoot {
                 root.soundEnabled = doc.sound;
             if (typeof doc.voice === "boolean" && !root.hasSetting("voice"))
                 root.voiceSpeak = doc.voice;
+            if (typeof doc.discord === "boolean" && !root.hasSetting("discord"))
+                root.discordEnabled = doc.discord;
             if (typeof doc.voiceId === "string" && doc.voiceId.length > 0
                     && !root.hasSetting("voiceId"))
                 root.voiceId = doc.voiceId;
@@ -324,6 +327,7 @@ ShellRoot {
             log: root.logEnabled,
             sound: root.soundEnabled,
             voice: root.voiceSpeak,
+            discord: root.discordEnabled,
             voiceId: root.voiceId,
             volume: root.voiceVolume,
             scale: root.petScale,
@@ -726,6 +730,10 @@ ShellRoot {
             root.voiceSpeak = doc.voice;
             touched = true;
         }
+        if (typeof doc.discord === "boolean" && doc.discord !== root.discordEnabled) {
+            root.discordEnabled = doc.discord;
+            touched = true;
+        }
         if (typeof doc.voiceId === "string" && doc.voiceId.length > 0
                 && doc.voiceId !== root.voiceId) {
             root.voiceId = doc.voiceId;
@@ -760,7 +768,7 @@ ShellRoot {
     }
 
     // Toggle helpers shared by tray IPC, slash commands and settings import.
-    // key: wander | sleep | blink | log | sound | voice (settings key names).
+    // key: wander | sleep | blink | log | sound | voice | discord (settings key names).
     function setToggle(key, mode) {
         const v = (mode === "toggle")
             ? !root.toggleValue(key)
@@ -771,6 +779,7 @@ ShellRoot {
         else if (key === "log") root.logEnabled = v;
         else if (key === "sound") root.soundEnabled = v;
         else if (key === "voice") root.voiceSpeak = v;
+        else if (key === "discord") root.discordEnabled = v;
         else return;
         root.saveState();
         const patch = {};
@@ -785,6 +794,7 @@ ShellRoot {
         if (key === "log") return root.logEnabled;
         if (key === "sound") return root.soundEnabled;
         if (key === "voice") return root.voiceSpeak;
+        if (key === "discord") return root.discordEnabled;
         return false;
     }
 
@@ -1134,7 +1144,7 @@ ShellRoot {
             return true;
         }
         if (cmd === "help") {
-            root.addMessage("system", "Commands: /new, /retry, /export, /stats, /model provider/name, /agent name, /sound on|off, /voice on|off|<id>, /volume 10-150, /help. Prefix with @window to include the focused Hyprland window. Drop files into the chat to attach @paths.");
+            root.addMessage("system", "Commands: /new, /retry, /export, /stats, /model provider/name, /agent name, /sound on|off, /voice on|off|<id>, /volume 10-150, /discord on|off|test, /help. Prefix with @window to include the focused Hyprland window. Drop files into the chat to attach @paths.");
             return true;
         }
         if (cmd === "agent") {
@@ -1162,6 +1172,21 @@ ShellRoot {
         }
         if (cmd === "volume") {
             root.setVolume(arg);
+            return true;
+        }
+        if (cmd === "discord") {
+            if (arg === "test") {
+                root.testDiscord();
+            } else if (arg.length > 0) {
+                root.setToggle("discord", arg);
+                root.addMessage("system", "Discord alerts "
+                    + (root.discordEnabled ? "on." : "off.")
+                    + " Webhook lives in ~/.config/frieren/discord-webhook.env (mode 600).");
+            } else {
+                root.addMessage("system", "Discord alerts "
+                    + (root.discordEnabled ? "on." : "off.")
+                    + " /discord on|off|test.");
+            }
             return true;
         }
         if (cmd === "model") {
@@ -1524,26 +1549,67 @@ ShellRoot {
         }
     }
 
-    function notifyTurn(title, body) {
+    // Local notify-send plus an optional Discord webhook embed, fanned out
+    // by tools/frieren-notify.sh. The webhook URL never travels in argv:
+    // the script reads it from the env file itself. Title, event and body
+    // travel over stdin: rewriting command in onStarted does not reach the
+    // already started process, so argv would carry stale defaults.
+    function notifyTurn(title, body, event) {
         notifier.title = String(title || "Frieren").slice(0, 60);
         notifier.body = String(body || "").slice(0, 200);
+        notifier.event = String(event || "info").slice(0, 20);
+        notifier.payload = notifier.title + "\n" + notifier.event + "\n" + notifier.body;
         if (!notifier.running) notifier.running = true;
+    }
+
+    function testDiscord() {
+        if (discordTest.running) return;
+        root.addMessage("system", "Discord: posting a test embed...");
+        discordTest.running = true;
+    }
+
+    // One-line summary of what the turn was asked to do, for notifications.
+    function turnSummary() {
+        const p = String(root.turnPrompt || "").replace(/\s+/g, " ").trim();
+        if (p.length === 0) return "";
+        return p.length > 100 ? p.slice(0, 100) + "..." : p;
     }
 
     Process {
         id: notifier
         property string title: "Frieren"
         property string body: ""
+        property string event: "info"
+        property string payload: ""
         running: false
-        command: ["sh", "-c",
-            'command -v notify-send >/dev/null 2>&1 || exit 0;'
-            + ' exec notify-send "$0" "$1"',
-            "Frieren", ""]
+        stdinEnabled: true
+        stdout: StdioCollector { id: notifierOut }
+        stderr: StdioCollector { id: notifierErr }
+        command: ["sh", root.toolsDir + "/frieren-notify.sh"]
         onStarted: {
-            notifier.command = ["sh", "-c",
-                'command -v notify-send >/dev/null 2>&1 || exit 0;'
-                + ' exec notify-send "$0" "$1"',
-                notifier.title, notifier.body];
+            notifier.stdinEnabled = true;
+            notifier.write(notifier.payload);
+            notifier.payload = "";
+            notifier.stdinEnabled = false;
+        }
+        onExited: (code, status) => {
+            notifier.stdinEnabled = true;
+        }
+    }
+
+    Process {
+        id: discordTest
+        running: false
+        stdout: StdioCollector { id: discordTestOut }
+        stderr: StdioCollector { id: discordTestErr }
+        command: ["sh", root.toolsDir + "/frieren-notify.sh",
+            "--test", "--event", "test"]
+        onExited: (code, status) => {
+            if (code === 0)
+                root.addMessage("system", String(discordTestOut.text || "Discord: test posted.").trim().slice(0, 200));
+            else
+                root.addMessage("system", "Discord test failed: "
+                    + String(discordTestErr.text || discordTestOut.text || ("exit " + code)).trim().slice(0, 200));
         }
     }
 
@@ -1669,11 +1735,11 @@ ShellRoot {
             if (code === 0) {
                 const msg = String(backupOut.text || "Backup done.").trim().slice(0, 200);
                 root.addMessage("system", msg);
-                root.notifyTurn("Frieren backup", msg);
+                root.notifyTurn("Frieren backup", msg, "backup");
             } else {
                 const msg = "Backup: " + String(backupErr.text || "failed").trim().slice(0, 200);
                 root.addMessage("system", msg);
-                root.notifyTurn("Frieren backup", msg);
+                root.notifyTurn("Frieren backup", msg, "error");
             }
         }
     }
@@ -2050,8 +2116,10 @@ ShellRoot {
             }
             // Nudge when a long turn finishes while the chat is closed.
             if (!root.chatOpen && duration >= 30000) {
-                if (clean) root.notifyTurn("Frieren: done", "Finished in " + Math.round(duration / 1000) + "s.");
-                else if (code !== 130) root.notifyTurn("Frieren: error", String(root.turnError || ("exit " + code)).slice(0, 160));
+                const summary = root.turnSummary();
+                const suffix = summary.length > 0 ? " Asked: \"" + summary + "\"" : "";
+                if (clean) root.notifyTurn("Frieren: done", "Finished in " + Math.round(duration / 1000) + "s." + suffix, "done");
+                else if (code !== 130) root.notifyTurn("Frieren: error", String(root.turnError || ("exit " + code)).slice(0, 120) + suffix, "error");
             }
             root.logTurn(code, "");
             root.saveHistory();
@@ -2220,6 +2288,11 @@ ShellRoot {
         function sound(mode: string): void { root.setToggle("sound", mode) }
 
         function voice(mode: string): void { root.setToggle("voice", mode) }
+
+        function discord(mode: string): void {
+            if (mode === "test") root.testDiscord();
+            else root.setToggle("discord", mode);
+        }
 
         function voiceid(id: string): void { root.setVoice(id) }
 

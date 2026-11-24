@@ -29,7 +29,8 @@ change the system. She also has a real system tray icon with a settings menu.
   also searches message bodies (FTS5), newest first. Scrolling up while
   she writes no longer drags the view back down; `↓ Latest` returns to the end.
 - Slash commands: `/new`, `/retry`, `/export`, `/stats`, `/model provider/name`,
-  `/agent name`, `/sound on|off`, `/voice on|off|id`, `/volume 10-150`, `/help`.
+  `/agent name`, `/sound on|off`, `/voice on|off|id`, `/volume 10-150`,
+  `/discord on|off|test`, `/help`.
   Typing `/` suggests commands (Enter/↑↓/click, Esc hides); `@` suggests
   `@window`.
   Prefix a prompt with `@window` to append the focused Hyprland window.
@@ -69,6 +70,7 @@ qs -c frieren ipc call frieren sleep toggle
 qs -c frieren ipc call frieren blink toggle
 qs -c frieren ipc call frieren sound toggle
 qs -c frieren ipc call frieren voice toggle
+qs -c frieren ipc call frieren discord toggle
 qs -c frieren ipc call frieren log toggle
 qs -c frieren ipc call frieren scale 1.15
 qs -c frieren ipc call frieren resetpos
@@ -89,7 +91,7 @@ DBusMenu:
 - `Settings` → `Pet` (`Wander`, `Sleep when idle`, `Blink`, `Size`, `Reset
   position`), `Sound & voice` (`Sound`, `Voice replies`, `Voice` with one
   radio per downloaded voice, current one checked), `Data` (`Activity log`,
-  `Backup database`)
+  `Backup database`, `Discord alerts`)
 - `About` (project, author, happy Frieren, repository and MIT license)
 - `Quit`
 
@@ -148,7 +150,7 @@ opencode run --format json --model opencode-go/deepseek-v4.1-flash \
 
 `~/.config/frieren/settings.json` (created on the first change, watched live).
 Keys: `model` (`provider/name`), `agent`, `wander`, `sleep`, `blink`, `log`,
-`sound`, `voice`, `scale` (0.7 to 1.4). It wins over `state.json`, so
+`sound`, `voice`, `discord`, `scale` (0.7 to 1.4). It wins over `state.json`, so
 hand-editing it applies without reopening the pet.
 
 ```json
@@ -180,6 +182,34 @@ hand-editing it applies without reopening the pet.
   Loud 100 / Max 130), `/volume 10-150`, `qs ... ipc call frieren volume 80`,
   or `settings.json` `volume`. Scaled with ffmpeg (else full volume).
 
+## Notifications
+
+Local popups use `notify-send`. Long turns that finish while the chat is
+closed, turn errors and backup results also fan out through
+`tools/frieren-notify.sh`, which posts to Discord when enabled.
+
+Setup (opt-in, off by default):
+
+1. Create a webhook in Discord: channel settings → Integrations → Webhooks →
+   New Webhook, copy its URL.
+2. Save it to `~/.config/frieren/discord-webhook.env` (a bare URL line or
+   `DISCORD_WEBHOOK_URL=<url>`) and lock it down: `chmod 600` on the file.
+   The notifier refuses to post from a world-readable file. The URL never
+   appears in argv, `ps`, `state.json` or logs: the script reads it itself.
+3. Enable it: tray → `Settings` → `Data` → `Discord alerts`, `/discord on`,
+   or `qs -c frieren ipc call frieren discord on`.
+4. Check it: `/discord test` posts a test embed and reports the result.
+
+Each Discord message is an embed from `Frieren`: title, truncated body, a
+color per event (`done` green, `error` red, `reminder` violet, `backup`
+blurple) and Frieren art per event (happy, sad, think, reading, idle poses
+from `assets/poses/`). Override the art in `settings.json` with
+`discordImage` (one URL for all events) or `discordImages`
+(`{"done": "https://...", "error": "https://..."}` for custom images or GIFs).
+
+Events wired today: finished long turns, turn errors, backup results.
+Reminders and the weekly agenda will reuse the same helper.
+
 ## Helpers
 
 Installed by `install.sh` into `~/.local/bin`:
@@ -191,6 +221,7 @@ Installed by `install.sh` into `~/.local/bin`:
 | `frieren-ask` | Quick prompt via rofi/wofi/fuzzel/bemenu/dmenu |
 | `frieren-shot` | Screenshot (grim+slurp) straight into the chat |
 | `frieren-backup [backup\|restore latest\|list]` | Hot-copy `frieren.db` into `~/.local/share/frieren/backups/` (prunes to 10, tray action notifies) |
+| `frieren-notify "title" "body" [event]` | Local `notify-send` plus Discord webhook embed (`done`, `error`, `reminder`, `backup`, `info`) |
 | `frieren-voice [list\|download <id>\|use <id>]` | Voice catalog: `en-jenny`, `es-davefx`, `es-sharvard` |
 | `frieren-weekly` | AI summary of the last 7 days via opencode |
 

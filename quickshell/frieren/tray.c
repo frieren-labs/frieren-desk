@@ -58,6 +58,7 @@
 #define ID_VOL_MED 51
 #define ID_VOL_LOUD 52
 #define ID_VOL_MAX 53
+#define ID_DISCORD 54
 
 typedef struct {
     gboolean minimized;
@@ -67,6 +68,7 @@ typedef struct {
     gboolean log;
     gboolean sound;
     gboolean voice;
+    gboolean discord;
     gchar *voice_id;
     gint volume;
     gboolean auth;
@@ -301,6 +303,7 @@ static void read_state(App *app) {
     app->state.log = json_bool(data, "log", app->state.log);
     app->state.sound = json_bool(data, "sound", app->state.sound);
     app->state.voice = json_bool(data, "voice", app->state.voice);
+    app->state.discord = json_bool(data, "discord", app->state.discord);
     gchar *vid = json_string(data, "voiceId", app->state.voice_id);
     g_free(app->state.voice_id);
     app->state.voice_id = vid;
@@ -392,6 +395,8 @@ static GVariant *props_for_id(App *app, gint32 id) {
             return item_props("Sound", TRUE, NULL, NULL, "checkmark", s->sound ? 1 : 0);
         case ID_VOICE:
             return item_props("Voice replies", TRUE, NULL, NULL, "checkmark", s->voice ? 1 : 0);
+        case ID_DISCORD:
+            return item_props("Discord alerts", TRUE, NULL, NULL, "checkmark", s->discord ? 1 : 0);
         case ID_BACKUP:
             return item_props("Backup database", TRUE, NULL, NULL, NULL, 0);
         case ID_SIZE:
@@ -454,7 +459,7 @@ static GVariant *build_node(App *app, gint32 id) {
         ID_VOL_LOW, ID_VOL_MED, ID_VOL_LOUD, ID_VOL_MAX
     };
     static const gint32 data_children[] = {
-        ID_LOG, ID_BACKUP
+        ID_LOG, ID_BACKUP, ID_DISCORD
     };
     static const gint32 size_children[] = {ID_SMALL, ID_MEDIUM, ID_LARGE};
 
@@ -623,7 +628,7 @@ static void emit_state_changed(App *app) {
 
     static const gint32 dynamic_ids[] = {
         ID_TOGGLE_PET, ID_CHAT, ID_STOP, ID_AUTH,
-        ID_WANDER, ID_SLEEP, ID_BLINK, ID_SOUND, ID_VOICE, ID_LOG,
+        ID_WANDER, ID_SLEEP, ID_BLINK, ID_SOUND, ID_VOICE, ID_LOG, ID_DISCORD,
         ID_SMALL, ID_MEDIUM, ID_LARGE,
         ID_VOL_LOW, ID_VOL_MED, ID_VOL_LOUD, ID_VOL_MAX
     };
@@ -866,6 +871,9 @@ static void activate(App *app, gint32 id) {
         case ID_VOICE:
             spawn_ipc(app, "voice", "toggle");
             break;
+        case ID_DISCORD:
+            spawn_ipc(app, "discord", "toggle");
+            break;
         case ID_VOL_LOW:
             spawn_ipc(app, "volume", "40");
             break;
@@ -1026,6 +1034,7 @@ int main(int argc, char **argv) {
     app.state.log = TRUE;
     app.state.sound = TRUE;
     app.state.voice = FALSE;
+    app.state.discord = FALSE;
     app.state.volume = 100;
     app.state.scale = 1.0;
     app.revision = 1;

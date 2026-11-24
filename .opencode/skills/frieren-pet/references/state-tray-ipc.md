@@ -17,6 +17,7 @@ place with `sh -c`, so readers never see a partial file.
 | `sleep` | bool | tray, IPC | startup, tray | Sleep when idle |
 | `blink` | bool | tray, IPC | startup, tray | Blinking |
 | `log` | bool | tray, IPC | startup, tray | Activity log hook |
+| `discord` | bool | tray, IPC | startup, tray | Discord webhook alerts |
 | `scale` | number | tray, IPC | startup, tray | 0.7 to 1.4 |
 | `auth` | bool | auth check | tray | opencode account connected |
 | `busy` | bool | busy changes | none | Snapshot for debugging |
@@ -101,6 +102,7 @@ It writes nothing itself: every action calls `qs -c frieren ipc call frieren`.
 | 25 | Data submenu | none |
 | 18 | Activity log | `log toggle` |
 | 22 | Backup database | `backup` |
+| 54 | Discord alerts | `discord toggle` |
 | 15 | Separator | none |
 | 16 | Quit | `quit` |
 | 17 | Account / Setup account | `auth` |
@@ -110,8 +112,8 @@ IDs 30-49 are dynamic: index into the sorted `voices/*.onnx` list (plus
 legacy `en.onnx`). A download changes the Voice submenu; the helper watches
 the voices dir and bumps the layout revision.
 Keep IDs stable. ID 3 (`New conversation`) was retired; do not reuse it for a
-different item. `notify_state()` sends updates only for IDs 1, 2, 4, 7, 8, 9,
-20, 21, 18, 11 to 13, 17 and the current 30-49 range. Add new toggle or radio
+different item. `emit_state_changed()` sends updates for IDs 1, 2, 4, 7, 8, 9,
+20, 21, 18, 54, 11 to 13, 17 and the current 30-49 range. Add new toggle or radio
 IDs to that list.
 
 ### Toggle type rules
@@ -180,6 +182,7 @@ The handler target is `frieren`.
 | `log` | `toggle` or `true` or `false` | Set the activity log hook |
 | `sound` | `toggle` or `true` or `false` | Set UI sounds |
 | `voice` | `toggle` or `true` or `false` | Set spoken replies |
+| `discord` | `toggle`, `true`, `false` or `test` | Set Discord alerts, or post a test embed |
 | `voiceid` | voice id | Select the spoken voice (enables voice) |
 | `volume` | 10-150 | Set voice volume percent |
 | `backup` | none | Hot-copy `frieren.db` to the backups dir |
