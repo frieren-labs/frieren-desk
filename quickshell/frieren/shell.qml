@@ -543,7 +543,14 @@ ShellRoot {
         "  done INTEGER NOT NULL DEFAULT 0,",
         "  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
         ");",
-        "CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(done, due_at);"
+        "CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(done, due_at);",
+        "CREATE TABLE IF NOT EXISTS reminder_events (",
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,",
+        "  reminder_id INTEGER NOT NULL,",
+        "  kind TEXT NOT NULL,",
+        "  at INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
+        ");",
+        "CREATE INDEX IF NOT EXISTS idx_reminder_events_rid ON reminder_events(reminder_id);"
     ].join("\n")
 
     function queueReminderWrite(sql) {
@@ -601,13 +608,16 @@ ShellRoot {
             if (isNaN(id)) continue;
             if (row.recurrence === "daily")
                 root.queueReminderWrite(root.reminderSchema
-                    + "\nUPDATE reminders SET due_at = due_at + 86400 WHERE id = " + id + ";");
+                    + "\nUPDATE reminders SET due_at = due_at + 86400 WHERE id = " + id + ";"
+                    + "\nINSERT INTO reminder_events (reminder_id, kind) VALUES (" + id + ", 'fired');");
             else if (row.recurrence === "weekly")
                 root.queueReminderWrite(root.reminderSchema
-                    + "\nUPDATE reminders SET due_at = due_at + 604800 WHERE id = " + id + ";");
+                    + "\nUPDATE reminders SET due_at = due_at + 604800 WHERE id = " + id + ";"
+                    + "\nINSERT INTO reminder_events (reminder_id, kind) VALUES (" + id + ", 'fired');");
             else
                 root.queueReminderWrite(root.reminderSchema
-                    + "\nUPDATE reminders SET done = 1 WHERE id = " + id + ";");
+                    + "\nUPDATE reminders SET done = 1 WHERE id = " + id + ";"
+                    + "\nINSERT INTO reminder_events (reminder_id, kind) VALUES (" + id + ", 'fired');");
         }
     }
 
@@ -830,7 +840,8 @@ ShellRoot {
             return;
         }
         root.queueReminderWrite(root.reminderSchema
-            + "\nUPDATE reminders SET done = 1 WHERE id = " + id + ";");
+            + "\nUPDATE reminders SET done = 1 WHERE id = " + id + ";"
+            + "\nINSERT INTO reminder_events (reminder_id, kind) VALUES (" + id + ", 'done');");
         root.addMessage("system", "Marked reminder #" + id + " as done.");
     }
 

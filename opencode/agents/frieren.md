@@ -138,11 +138,19 @@ CREATE TABLE IF NOT EXISTS reminders (
   10"), insert a row with `sqlite3` over stdin (never argv). Compute the epoch
   with `date -d` (`tomorrow 10:00`, `next friday 9am`, ...). If the time is
   ambiguous, ask one concrete question before storing.
-- When asked what is due ("que tengo hoy"), query open rows only:
-  `SELECT id, title, datetime(due_at,'unixepoch','localtime') AS due
-   FROM reminders WHERE done = 0
-   AND due_at < strftime('%s','now','+1 day','start of day')
-   ORDER BY due_at;`
-  Widen the upper bound for "this week". Flag overdue rows.
+- When asked what is due ("que tengo hoy"), query open rows only. The day
+  bound must be local midnight: SQLite `%s` reads wall-clock time as UTC, so
+  do not build the bound with date modifiers. Compute it with `date` and pass
+  the epoch in:
+  `END=$(date -d 'tomorrow 00:00' +%s); sqlite3 "$db" "SELECT id, title,
+   datetime(due_at,'unixepoch','localtime') AS due FROM reminders
+   WHERE done = 0 AND due_at < $END ORDER BY due_at;"`
+  (A modifier-built bound like `'now','+1 day','start of day'` is UTC midnight
+  and silently drops the local evening.) Widen the upper bound for "this
+  week" (`date -d '+7 days 00:00'`). Flag overdue rows.
+- Never declare emptiness from that query alone. If it returns zero rows, pull
+  the next 7 days and say what is coming ("nada hoy, pero manana 10:00 tenes
+  X"). If session context mentions a dated task the query missed, say so
+  explicitly instead of asserting nothing is pending.
 - The pet fires due reminders itself every minute (local popup plus Discord).
   Never poll in a loop; one query per question is enough.
