@@ -5,11 +5,11 @@ Item {
     id: dialog
 
     property var theme
-    property string handle: "jd-apprentice"
-    property string profileUrl: "https://github.com/jd-apprentice"
-    property string repoUrl: "https://github.com/jd-apprentice/frieren-desk"
+    property string handle: "frieren-labs"
+    property string profileUrl: "https://github.com/frieren-labs"
+    property string repoUrl: "https://github.com/frieren-labs/frieren-desk"
     property string licenseName: "MIT License"
-    property string licenseUrl: "https://github.com/jd-apprentice/frieren-desk/blob/main/LICENSE"
+    property string licenseUrl: "https://github.com/frieren-labs/frieren-desk/blob/main/LICENSE"
 
     signal close()
 

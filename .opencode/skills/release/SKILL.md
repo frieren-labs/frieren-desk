@@ -12,7 +12,7 @@ argument-hint: "[version] [description]"
 
 # /release — Frieren Desk release process
 
-Repo: [jd-apprentice/frieren-desk](https://github.com/jd-apprentice/frieren-desk).
+Repo: [frieren-labs/frieren-desk](https://github.com/frieren-labs/frieren-desk).
 Single repo, no packages, no version files: git tags plus conventional commits
 are the release record. `install.sh` pulls from `main` by default, so a tag
 marks a known-good installer snapshot.
@@ -62,7 +62,7 @@ marks a known-good installer snapshot.
    computes the next tag itself).
 4. **Verify**
    - `gh release view <tag>` shows the notes.
-   - `curl -fsSL https://github.com/jd-apprentice/frieren-desk/archive/refs/tags/<tag>.tar.gz`
+   - `curl -fsSL https://github.com/frieren-labs/frieren-desk/archive/refs/tags/<tag>.tar.gz`
      downloads a tarball.
 5. **Rollback**: `gh release delete <tag> --yes && git push origin :<tag> &&
    git tag -d <tag>`. Never re-tag a deleted tag name with different bytes.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Frieren installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/frieren-labs/frieren-desk/main/install.sh | bash
 #   ./install.sh
 #
 # Options:
@@ -11,11 +11,11 @@
 #   -h, --help    show this help
 #
 # Environment:
-#   FRIEREN_REPO  GitHub repo to download (default: jd-apprentice/frieren-desk)
+#   FRIEREN_REPO  GitHub repo to download (default: frieren-labs/frieren-desk)
 #   FRIEREN_REF   branch, tag or commit to download (default: main)
 set -euo pipefail
 
-REPO="${FRIEREN_REPO:-jd-apprentice/frieren-desk}"
+REPO="${FRIEREN_REPO:-frieren-labs/frieren-desk}"
 REF="${FRIEREN_REF:-main}"
 
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -57,7 +57,7 @@ Options:
   -h, --help    show this help
 
 Environment:
-  FRIEREN_REPO  GitHub repo to download (default: jd-apprentice/frieren-desk)
+  FRIEREN_REPO  GitHub repo to download (default: frieren-labs/frieren-desk)
   FRIEREN_REF   branch, tag or commit to download (default: main)
 
 Build requirements: a C compiler, pkg-config and the gio-2.0 headers

@@ -17,7 +17,7 @@ v2, Hyprland, Qt 6, `sqlite3` (chat history and activity log), and a C toolchain
 with the `gio` headers (on Arch: `base-devel` plus `glib2`).
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/frieren-labs/frieren-desk/main/install.sh | bash
 ```
 
 Then open **Frieren** from the app menu, or run `~/.local/bin/frieren`. The
@@ -29,7 +29,7 @@ Paste this prompt to an agent with shell access on the target machine:
 
 ```text
 Install Frieren Desk on this Hyprland machine.
-Repo: https://github.com/jd-apprentice/frieren-desk
+Repo: https://github.com/frieren-labs/frieren-desk
 
 1. Check prerequisites and report versions. Fail fast if missing:
    qs --version (needs Quickshell 0.3+), opencode --version (needs v2),
@@ -40,7 +40,7 @@ Repo: https://github.com/jd-apprentice/frieren-desk
 
 2. Run the installer (add --force only to overwrite
    ~/.config/opencode/agents/frieren.md):
-   curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/frieren-labs/frieren-desk/main/install.sh | bash
 
 3. Hook it into the compositor:
    - If ~/.config/hypr/dms/binds-user.lua exists (DankMaterialShell), add:

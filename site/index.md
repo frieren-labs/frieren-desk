@@ -15,7 +15,7 @@ title: Frieren Desk, a chibi pet that runs your system
 
   <div class="cta-row">
     <a class="btn" href="#install">Summon her</a>
-    <a class="btn btn-ghost" href="https://github.com/jd-apprentice/frieren-desk">View source</a>
+    <a class="btn btn-ghost" href="https://github.com/frieren-labs/frieren-desk">View source</a>
   </div>
 
   <div class="hud" aria-label="Requirements">
@@ -28,7 +28,7 @@ title: Frieren Desk, a chibi pet that runs your system
 
   <figure class="install-rune">
     <figcaption><span>$ quick cast</span><button class="copy-btn" data-copy="install-cmd">copy</button></figcaption>
-    <pre id="install-cmd"><code>curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash</code></pre>
+    <pre id="install-cmd"><code>curl -fsSL https://raw.githubusercontent.com/frieren-labs/frieren-desk/main/install.sh | bash</code></pre>
   </figure>
   </div>
 </div>
@@ -182,7 +182,7 @@ v2, Hyprland, Qt 6, `sqlite3`, and a C toolchain with the `gio` headers
 (on Arch: `base-devel` plus `glib2`).
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jd-apprentice/frieren-desk/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/frieren-labs/frieren-desk/main/install.sh | bash
 ```
 
 Then open **Frieren** from the app menu, or run `~/.local/bin/frieren`. The
@@ -381,9 +381,9 @@ never in argv, logs or state files.
 ## Source and contributions
 
 PRs welcome. Keep code and docs in English. See
-[CONTRIBUTING.md](https://github.com/jd-apprentice/frieren-desk/blob/main/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/frieren-labs/frieren-desk/blob/main/CONTRIBUTING.md).
 Full reference lives in
-[`quickshell/frieren/README.md`](https://github.com/jd-apprentice/frieren-desk/blob/main/quickshell/frieren/README.md),
+[`quickshell/frieren/README.md`](https://github.com/frieren-labs/frieren-desk/blob/main/quickshell/frieren/README.md),
 the interactive architecture diagram in `docs/architecture.html`.
 
 </section>
