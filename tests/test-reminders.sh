@@ -19,11 +19,12 @@ fail() { echo "FAIL: $*"; exit 1; }
 pass() { echo "ok: $*"; }
 
 # Minimal equivalent of reminderSchema in quickshell/frieren/shell.qml.
+# due_at is nullable: NULL rows are backlog (listed, never fired).
 sqlite3 "$DB" <<'SQL'
 CREATE TABLE reminders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL,
-  due_at INTEGER NOT NULL,
+  due_at INTEGER,
   recurrence TEXT NOT NULL DEFAULT 'once',
   done INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
@@ -39,7 +40,7 @@ SQL
 EVENING="$(date -d 'today 22:30' +%s)"
 TOMORROW="$(date -d 'tomorrow 10:00' +%s)"
 YESTERDAY="$(date -d 'yesterday 09:00' +%s)"
-sqlite3 "$DB" "INSERT INTO reminders (title, due_at) VALUES ('evening item', $EVENING), ('tomorrow item', $TOMORROW), ('overdue item', $YESTERDAY);"
+sqlite3 "$DB" "INSERT INTO reminders (title, due_at) VALUES ('evening item', $EVENING), ('tomorrow item', $TOMORROW), ('overdue item', $YESTERDAY), ('backlog item', NULL);"
 
 # Sanity: date-based seeds land where intended (SQLite displays them back).
 [ "$(sqlite3 "$DB" "SELECT datetime($EVENING,'unixepoch','localtime');")" = "$(date -d 'today 22:30' +'%Y-%m-%d %H:%M:00')" ] || fail "seed round-trip broken"
@@ -58,6 +59,17 @@ echo "$new_rows" | grep -q "evening item" || fail "local bound misses the evenin
 echo "$new_rows" | grep -q "tomorrow item" && fail "local bound leaks tomorrow into today"
 echo "$new_rows" | grep -q "overdue item" || fail "local bound misses the overdue item"
 pass "date-based today bound keeps the evening, excludes tomorrow"
+
+# Dateless rows: excluded from the today bound and the fire query, visible
+# to the backlog query and last in /tasks order.
+echo "$new_rows" | grep -q "backlog item" && fail "local bound leaks backlog into today"
+due_rows="$(sqlite3 "$DB" "SELECT title FROM reminders WHERE done = 0 AND due_at IS NOT NULL AND due_at <= $(date +%s) ORDER BY due_at;")"
+echo "$due_rows" | grep -q "backlog item" && fail "fire query catches backlog"
+backlog_rows="$(sqlite3 "$DB" "SELECT title FROM reminders WHERE done = 0 AND due_at IS NULL;")"
+echo "$backlog_rows" | grep -q "backlog item" || fail "backlog query misses the dateless row"
+tasks_order="$(sqlite3 "$DB" "SELECT title FROM reminders WHERE done = 0 ORDER BY due_at IS NULL, due_at;")"
+[ "$(echo "$tasks_order" | tail -n 1)" = "backlog item" ] || fail "tasks order puts backlog before dated rows"
+pass "dateless rows stay out of date bounds and the fire query, last in tasks"
 
 # Fire simulation: what applyDueReminders queues for a due once row.
 sqlite3 "$DB" "UPDATE reminders SET done = 1 WHERE title = 'evening item'; INSERT INTO reminder_events (reminder_id, kind) VALUES ((SELECT id FROM reminders WHERE title = 'evening item'), 'fired');"

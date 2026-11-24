@@ -127,7 +127,7 @@ Dated reminders live in the same `frieren.db` (`${XDG_STATE_HOME:-$HOME/.local/s
 CREATE TABLE IF NOT EXISTS reminders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL,
-  due_at INTEGER NOT NULL,                -- unix epoch seconds, local time
+  due_at INTEGER,                         -- unix epoch seconds, local time; NULL = backlog (no date)
   recurrence TEXT NOT NULL DEFAULT 'once', -- once|daily|weekly
   done INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
@@ -138,6 +138,9 @@ CREATE TABLE IF NOT EXISTS reminders (
   10"), insert a row with `sqlite3` over stdin (never argv). Compute the epoch
   with `date -d` (`tomorrow 10:00`, `next friday 9am`, ...). If the time is
   ambiguous, ask one concrete question before storing.
+- When the user states a task with no date ("arregla el lldap del homelab
+  algun dia"), insert with `due_at` NULL: `INSERT INTO reminders (title,
+  due_at) VALUES ('...', NULL);`. NULL rows are backlog: listed, never fired.
 - After inserting, read the row back and report the stored id and due time.
   Never claim a reminder is scheduled without a confirmed row: an unconfirmed
   schedule is a lie, not a reminder.
@@ -153,7 +156,9 @@ CREATE TABLE IF NOT EXISTS reminders (
   week" (`date -d '+7 days 00:00'`). Flag overdue rows.
 - Never declare emptiness from that query alone. If it returns zero rows, pull
   the next 7 days and say what is coming ("nada hoy, pero manana 10:00 tenes
-  X"). If session context mentions a dated task the query missed, say so
+  X"). Backlog tasks (`WHERE done = 0 AND due_at IS NULL`) never match a date
+  bound: mention them only when the user asks for pending or someday tasks.
+  If session context mentions a dated task the query missed, say so
   explicitly instead of asserting nothing is pending.
 - The pet fires due reminders itself every minute (local popup plus Discord).
   Never poll in a loop; one query per question is enough.

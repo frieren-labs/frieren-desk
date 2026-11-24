@@ -530,15 +530,16 @@ ShellRoot {
         onExited: (code, status) => root.applySearch(historySearchOut.text)
     }
 
-    // ---------------- reminders (one-shot and recurring) ----------------
+    // ---------------- reminders (dated or dateless) ----------------
     // Dated rows in frieren.db. A 60s timer fires due rows through notifyTurn
-    // (local + Discord). The opencode agent reads and writes this table
-    // directly for the conversational loop; see opencode/agents/frieren.md.
+    // (local + Discord). Rows with due_at NULL are backlog: listed, never fired.
+    // The opencode agent reads and writes this table directly for the
+    // conversational loop; see opencode/agents/frieren.md.
     readonly property string reminderSchema: [
         "CREATE TABLE IF NOT EXISTS reminders (",
         "  id INTEGER PRIMARY KEY AUTOINCREMENT,",
         "  title TEXT NOT NULL,",
-        "  due_at INTEGER NOT NULL,",
+        "  due_at INTEGER,",
         "  recurrence TEXT NOT NULL DEFAULT 'once',",
         "  done INTEGER NOT NULL DEFAULT 0,",
         "  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
@@ -582,10 +583,54 @@ ShellRoot {
         }
     }
 
+    // One-shot migration: legacy tables declared due_at NOT NULL, which
+    // rejects backlog rows. Rebuild once; fresh DBs already use the schema
+    // above and skip this (empty sqlite_master result).
+    function migrateReminders() {
+        if (reminderMigrator.running) return;
+        reminderMigrator.running = true;
+    }
+
+    function applyReminderMigration(raw) {
+        let rows = [];
+        try {
+            rows = JSON.parse(String(raw || "[]"));
+        } catch (e) {}
+        if (!Array.isArray(rows) || rows.length === 0) return;
+        const ddl = String((rows[0] || {}).ddl || "");
+        if (!/due_at\s+INTEGER\s+NOT\s+NULL/i.test(ddl)) return;
+        root.queueReminderWrite("BEGIN;"
+            + "\nDROP INDEX IF EXISTS idx_reminders_due;"
+            + "\nALTER TABLE reminders RENAME TO reminders_legacy;"
+            + "\n" + root.reminderSchema
+            + "\nINSERT INTO reminders (id, title, due_at, recurrence, done, created_at)"
+            + " SELECT id, title, due_at, recurrence, done, created_at"
+            + " FROM reminders_legacy;"
+            + "\nDROP TABLE reminders_legacy;"
+            + "\nCOMMIT;");
+    }
+
+    Process {
+        id: reminderMigrator
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
+        stdout: StdioCollector { id: reminderMigratorOut }
+        onStarted: {
+            reminderMigrator.stdinEnabled = true;
+            reminderMigrator.write("SELECT sql AS ddl FROM sqlite_master WHERE name = 'reminders';");
+            reminderMigrator.stdinEnabled = false;
+        }
+        onExited: (code, status) => {
+            reminderMigrator.stdinEnabled = true;
+            if (code === 0) root.applyReminderMigration(reminderMigratorOut.text);
+        }
+    }
+
     function dueReminderSql() {
         return root.reminderSchema
             + "\nSELECT id, title, recurrence FROM reminders"
-            + " WHERE done = 0 AND due_at <= strftime('%s','now')"
+            + " WHERE done = 0 AND due_at IS NOT NULL AND due_at <= strftime('%s','now')"
             + " ORDER BY due_at LIMIT 5;";
     }
 
@@ -655,8 +700,10 @@ ShellRoot {
         const now = Math.floor(Date.now() / 1000);
         const lines = rows.map(row => {
             const tag = row.recurrence && row.recurrence !== "once" ? " (" + row.recurrence + ")" : "";
-            const late = Number(row.due_at) < now ? " OVERDUE" : "";
-            return "#" + row.id + " · " + row.due + tag + late + "\n  " + row.title;
+            const noDate = row.due_at === null || row.due_at === undefined;
+            const late = !noDate && Number(row.due_at) < now ? " OVERDUE" : "";
+            const when = noDate ? "no date" : row.due;
+            return "#" + row.id + " · " + when + tag + late + "\n  " + row.title;
         });
         root.addMessage("system", lines.join("\n"));
     }
@@ -672,7 +719,7 @@ ShellRoot {
             reminderLister.write(root.reminderSchema
                 + "\nSELECT id, title, due_at, recurrence,"
                 + " datetime(due_at, 'unixepoch', 'localtime') AS due"
-                + " FROM reminders WHERE done = 0 ORDER BY due_at LIMIT 20;");
+                + " FROM reminders WHERE done = 0 ORDER BY due_at IS NULL, due_at LIMIT 20;");
             reminderLister.stdinEnabled = false;
         }
         onExited: (code, status) => {
@@ -693,15 +740,19 @@ ShellRoot {
         interval: 8000
         running: true
         repeat: false
-        onTriggered: root.checkReminders()
+        onTriggered: { root.migrateReminders(); root.checkReminders(); }
     }
 
     // Split "/remind <when> <text>" into its two halves by matching the
-    // leading time expression. Returns {when, text} or {error}.
+    // leading time expression. "/remind someday <text>" (also sometime,
+    // todo, backlog) creates a dateless backlog row. Returns {when, text}
+    // with when null for backlog, or {error}.
     function splitReminderArg(arg) {
         const s = String(arg || "").trim();
         if (!s)
-            return { error: "Usage: /remind <when> <text>. Example: /remind tomorrow 9am call mom." };
+            return { error: "Usage: /remind <when> <text> or /remind someday <text>. Example: /remind tomorrow 9am call mom." };
+        const dateless = s.match(/^(someday|sometime|todo|backlog)\s+([\s\S]+)$/i);
+        if (dateless && dateless[2].trim()) return { when: null, text: dateless[2].trim() };
         const pats = [
             /^(in\s+\d+\s*(?:s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hours?|d|day|days))\s+([\s\S]+)$/i,
             /^((?:daily|every day|weekly|every week)(?:\s+(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*)?(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)\s+([\s\S]+)$/i,
@@ -714,7 +765,7 @@ ShellRoot {
             const m = s.match(pats[i]);
             if (m) return { when: m[1], text: m[2].trim() };
         }
-        return { error: "Could not find a time in that. Usage: /remind <when> <text>. Example: /remind tomorrow 9am call mom." };
+        return { error: "Could not find a time in that. Usage: /remind <when> <text> or /remind someday <text>. Example: /remind tomorrow 9am call mom." };
     }
 
     // Parse a when-expression into {epoch, label, recurrence} or {error}.
@@ -818,7 +869,14 @@ ShellRoot {
 
     function addReminder(whenText, title) {
         if (!title) {
-            root.addMessage("system", "Usage: /remind <when> <text>. Example: /remind tomorrow 9am call mom.");
+            root.addMessage("system", "Usage: /remind <when> <text> or /remind someday <text>. Example: /remind tomorrow 9am call mom.");
+            return;
+        }
+        if (whenText === null || whenText === undefined) {
+            root.queueReminderWrite(root.reminderSchema
+                + "\nINSERT INTO reminders (title, due_at, recurrence) VALUES ("
+                + root.sqlLiteral(title) + ", NULL, 'once');");
+            root.addMessage("system", "Saved to backlog (no date): " + title);
             return;
         }
         const p = root.parseReminderWhen(whenText);
@@ -1459,7 +1517,7 @@ ShellRoot {
             return true;
         }
         if (cmd === "help") {
-            root.addMessage("system", "Commands: /new, /retry, /export, /stats, /model provider/name, /agent name, /sound on|off, /voice on|off|<id>, /volume 10-150, /discord on|off|test, /remind <when> <text>, /tasks, /done <id>, /help. Prefix with @window to include the focused Hyprland window. Drop files into the chat to attach @paths.");
+            root.addMessage("system", "Commands: /new, /retry, /export, /stats, /model provider/name, /agent name, /sound on|off, /voice on|off|<id>, /volume 10-150, /discord on|off|test, /remind <when> <text> (or /remind someday <text>), /tasks, /done <id>, /help. Prefix with @window to include the focused Hyprland window. Drop files into the chat to attach @paths.");
             return true;
         }
         if (cmd === "agent") {

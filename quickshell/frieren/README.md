@@ -213,9 +213,10 @@ Reminders reuse the same helper, with the violet embed and the think pose.
 
 ## Reminders
 
-`/remind <when> <text>` stores a dated reminder, `/tasks` lists open ones
-with their ids, `/done <id>` closes one. Times are local; past times roll to
-the next valid slot:
+`/remind <when> <text>` stores a dated reminder, `/remind someday <text>`
+(a.k.a. `sometime`, `todo`, `backlog`) stores a dateless backlog task,
+`/tasks` lists open ones with their ids, `/done <id>` closes one. Times are
+local; past times roll to the next valid slot:
 
 - `/remind in 20min stretch` (also `10m`, `2h`, `30s`, `3d`)
 - `/remind today 18:00 call mom`, `/remind tomorrow 9am dentist`
@@ -223,7 +224,9 @@ the next valid slot:
 - `/remind daily 8:00 vitamins`, `/remind weekly friday 17:00 review`
 
 A 60-second timer fires due rows through the notifier while the pet runs
-(local popup plus Discord when enabled). `daily` advances a day, `weekly`
+(local popup plus Discord when enabled). Backlog rows have no date: `/tasks`
+lists them last with a `no date` tag and the timer never fires them.
+`daily` advances a day, `weekly`
 a week, one-shot rows close. The same table backs plain conversation: tell
 Frieren "manana tengo dentista a las 10" and ask "que tengo hoy" any time.
 
