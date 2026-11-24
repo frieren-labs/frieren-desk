@@ -105,6 +105,23 @@ skills cannot know.
   QML drives the `sqlite3` CLI and sends SQL over stdin. `sqlite3` is a runtime
   requirement (`install.sh` checks it).
 
+### Add a slash command
+
+A new `/cmd` touches every layer; missing one leaves it half-wired:
+
+1. `handleSlash()` in `shell.qml`: parse and act. Keep the handler pure
+   enough for the `qmllint` baseline.
+2. `/help` text in `handleSlash()`: same line lists every command.
+3. `slashCommands` in `components/ChatPanel.qml`: the `cmd` plus a short
+   `desc`, or typing `/` never suggests it.
+4. Popup budget in `ChatPanel.qml`: `slashPopup` height caps visible rows
+   and `slashList.positionViewAtIndex` follows keyboard navigation. New rows
+   push older ones below the fold; verify with `/` and arrow keys.
+5. IPC in `shell.qml` (`IpcHandler`) when scripts or the tray should call it.
+6. Tray in `tray.c` when it needs a menu entry (stable ID, valid toggle type).
+7. Docs in the same change: `quickshell/frieren/README.md` slash list plus
+   `site/index.md` (commands, tray menu, settings keys) when they mirror it.
+
 ### Add an activity event
 
 1. Call `root.emitEvent({ event: "name", ts: new Date().toISOString(), ... })`.
