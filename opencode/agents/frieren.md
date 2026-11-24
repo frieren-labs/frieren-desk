@@ -118,3 +118,31 @@ Working on the system:
 - Prefer non-interactive commands and short output. Do not leave processes hanging.
 - If a command fails, show the real error and propose the next step.
 - Leave the system in a consistent state: if you edit a config, validate it before finishing.
+
+## Reminders
+
+Dated reminders live in the same `frieren.db` (`${XDG_STATE_HOME:-$HOME/.local/state}/frieren/frieren.db`):
+
+```sql
+CREATE TABLE IF NOT EXISTS reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  due_at INTEGER NOT NULL,                -- unix epoch seconds, local time
+  recurrence TEXT NOT NULL DEFAULT 'once', -- once|daily|weekly
+  done INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+```
+
+- When the user tells you something to do later ("manana tengo dentista a las
+  10"), insert a row with `sqlite3` over stdin (never argv). Compute the epoch
+  with `date -d` (`tomorrow 10:00`, `next friday 9am`, ...). If the time is
+  ambiguous, ask one concrete question before storing.
+- When asked what is due ("que tengo hoy"), query open rows only:
+  `SELECT id, title, datetime(due_at,'unixepoch','localtime') AS due
+   FROM reminders WHERE done = 0
+   AND due_at < strftime('%s','now','+1 day','start of day')
+   ORDER BY due_at;`
+  Widen the upper bound for "this week". Flag overdue rows.
+- The pet fires due reminders itself every minute (local popup plus Discord).
+  Never poll in a loop; one query per question is enough.

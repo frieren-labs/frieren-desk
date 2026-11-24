@@ -30,7 +30,8 @@ change the system. She also has a real system tray icon with a settings menu.
   she writes no longer drags the view back down; `↓ Latest` returns to the end.
 - Slash commands: `/new`, `/retry`, `/export`, `/stats`, `/model provider/name`,
   `/agent name`, `/sound on|off`, `/voice on|off|id`, `/volume 10-150`,
-  `/discord on|off|test`, `/help`.
+  `/discord on|off|test`, `/remind <when> <text>`, `/tasks`, `/done <id>`,
+  `/help`.
   Typing `/` suggests commands (Enter/↑↓/click, Esc hides); `@` suggests
   `@window`.
   Prefix a prompt with `@window` to append the focused Hyprland window.
@@ -208,7 +209,23 @@ from `assets/poses/`). Override the art in `settings.json` with
 (`{"done": "https://...", "error": "https://..."}` for custom images or GIFs).
 
 Events wired today: finished long turns, turn errors, backup results.
-Reminders and the weekly agenda will reuse the same helper.
+Reminders reuse the same helper, with the violet embed and the think pose.
+
+## Reminders
+
+`/remind <when> <text>` stores a dated reminder, `/tasks` lists open ones
+with their ids, `/done <id>` closes one. Times are local; past times roll to
+the next valid slot:
+
+- `/remind in 20min stretch` (also `10m`, `2h`, `30s`, `3d`)
+- `/remind today 18:00 call mom`, `/remind tomorrow 9am dentist`
+- `/remind friday 9am deploy` (next Friday), `/remind 2026-12-01 09:00 trip`
+- `/remind daily 8:00 vitamins`, `/remind weekly friday 17:00 review`
+
+A 60-second timer fires due rows through the notifier while the pet runs
+(local popup plus Discord when enabled). `daily` advances a day, `weekly`
+a week, one-shot rows close. The same table backs plain conversation: tell
+Frieren "manana tengo dentista a las 10" and ask "que tengo hoy" any time.
 
 ## Helpers
 
