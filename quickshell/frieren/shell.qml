@@ -1568,6 +1568,13 @@ ShellRoot {
         discordTest.running = true;
     }
 
+    // One-line summary of what the turn was asked to do, for notifications.
+    function turnSummary() {
+        const p = String(root.turnPrompt || "").replace(/\s+/g, " ").trim();
+        if (p.length === 0) return "";
+        return p.length > 100 ? p.slice(0, 100) + "..." : p;
+    }
+
     Process {
         id: notifier
         property string title: "Frieren"
@@ -2109,8 +2116,10 @@ ShellRoot {
             }
             // Nudge when a long turn finishes while the chat is closed.
             if (!root.chatOpen && duration >= 30000) {
-                if (clean) root.notifyTurn("Frieren: done", "Finished in " + Math.round(duration / 1000) + "s.", "done");
-                else if (code !== 130) root.notifyTurn("Frieren: error", String(root.turnError || ("exit " + code)).slice(0, 160), "error");
+                const summary = root.turnSummary();
+                const suffix = summary.length > 0 ? " Asked: \"" + summary + "\"" : "";
+                if (clean) root.notifyTurn("Frieren: done", "Finished in " + Math.round(duration / 1000) + "s." + suffix, "done");
+                else if (code !== 130) root.notifyTurn("Frieren: error", String(root.turnError || ("exit " + code)).slice(0, 120) + suffix, "error");
             }
             root.logTurn(code, "");
             root.saveHistory();
