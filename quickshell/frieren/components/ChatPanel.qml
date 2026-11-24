@@ -89,7 +89,7 @@ Item {
         { cmd: "/voice", desc: "spoken replies: /voice on|off|id" },
         { cmd: "/volume", desc: "voice volume: /volume 10-150" },
         { cmd: "/discord", desc: "Discord alerts: /discord on|off|test" },
-        { cmd: "/remind", desc: "set reminder: /remind tomorrow 9am call mom" },
+        { cmd: "/remind", desc: "set reminder: /remind tomorrow 9am call mom (or /remind someday fix lldap)" },
         { cmd: "/tasks", desc: "list open reminders" },
         { cmd: "/done", desc: "close reminder: /done <id>" },
         { cmd: "/help", desc: "list commands" }
