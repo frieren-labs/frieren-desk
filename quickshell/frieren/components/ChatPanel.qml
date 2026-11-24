@@ -88,6 +88,10 @@ Item {
         { cmd: "/sound", desc: "UI sounds: /sound on|off" },
         { cmd: "/voice", desc: "spoken replies: /voice on|off|id" },
         { cmd: "/volume", desc: "voice volume: /volume 10-150" },
+        { cmd: "/discord", desc: "Discord alerts: /discord on|off|test" },
+        { cmd: "/remind", desc: "set reminder: /remind tomorrow 9am call mom" },
+        { cmd: "/tasks", desc: "list open reminders" },
+        { cmd: "/done", desc: "close reminder: /done <id>" },
         { cmd: "/help", desc: "list commands" }
     ]
     readonly property var atCommands: [
@@ -451,6 +455,7 @@ Item {
 
                     onTextChanged: {
                         panel.slashIndex = 0;
+                        slashList.positionViewAtBeginning();
                         if (text.length === 0 || (text[0] !== "/" && text[0] !== "@"))
                             panel.slashDismissed = false;
                     }
@@ -459,6 +464,7 @@ Item {
                         const m = panel.slashMatches();
                         if (panel.slashVisible() && m.length > 0) {
                             panel.slashIndex = (panel.slashIndex - 1 + m.length) % m.length;
+                            slashList.positionViewAtIndex(panel.slashIndex, ListView.Contain);
                             event.accepted = true;
                         }
                     }
@@ -467,6 +473,7 @@ Item {
                         const m = panel.slashMatches();
                         if (panel.slashVisible() && m.length > 0) {
                             panel.slashIndex = (panel.slashIndex + 1) % m.length;
+                            slashList.positionViewAtIndex(panel.slashIndex, ListView.Contain);
                             event.accepted = true;
                         }
                     }
@@ -543,7 +550,7 @@ Item {
                 anchors.right: parent.right
                 anchors.bottom: inputBox.top
                 anchors.bottomMargin: 6
-                height: Math.min(12 + panel.slashMatches().length * 30, 192)
+                height: Math.min(12 + panel.slashMatches().length * 30, 252)
                 visible: panel.slashVisible()
                 radius: 12
                 color: surfaceHigh
@@ -552,6 +559,7 @@ Item {
                 z: 10
 
                 ListView {
+                    id: slashList
                     anchors.fill: parent
                     anchors.margins: 6
                     clip: true
