@@ -23,6 +23,11 @@ jobs:
       - name: compile tray
         run: cc -O2 -o /tmp/frieren-tray quickshell/frieren/tray.c $(pkg-config --cflags --libs gio-2.0)
 
+      - name: reminders regression tests
+        run: |
+          sudo apt-get install -y sqlite3
+          bash tests/test-reminders.sh
+
       - name: install qmllint and Qt QML modules
         run: sudo apt-get install -y qt6-declarative-dev-tools qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-templates
 
