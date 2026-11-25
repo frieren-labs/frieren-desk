@@ -95,8 +95,8 @@ to opencode auth import only.
 | Activity panel: turns, success rate and average time per day. | Account dialog: API key or terminal login, plus the model picker. |
 | ![About dialog](assets/showcase/shot-about.png) | ![Settings window](assets/showcase/shot-settings.png) |
 | About dialog: project, author, repository and license. | Settings window: Pet, Sound & voice, Data and Model & account tabs. |
-| ![Settings voices](assets/showcase/shot-settings-voice.png) | |
-| Sound & voice tab: installed voices with the current one checked, volume presets. | |
+| ![Settings voices](assets/showcase/shot-settings-voice.png) | ![Settings data with Discord toggle](assets/showcase/shot-settings-data.png) |
+| Sound & voice tab: installed voices with the current one checked, volume presets. | Data tab: activity log, Discord alerts toggle with test embed, plus backup. |
 
 ## Docs
 
