@@ -133,6 +133,11 @@ Real screenshots from a running session.
 </figure>
 
 <figure>
+  <img src="{{ '/assets/img/shot-settings-data.png' | relative_url }}" alt="Settings window, Data tab" loading="lazy">
+  <figcaption>Data tab: activity log, Discord alerts toggle with test embed, plus backup.</figcaption>
+</figure>
+
+<figure>
   <img src="{{ '/assets/img/shot-auth.png' | relative_url }}" alt="Account dialog" loading="lazy">
   <figcaption>Account dialog: API key or terminal login, plus the model picker.</figcaption>
 </figure>
