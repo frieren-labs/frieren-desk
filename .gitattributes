@@ -1,0 +1,3 @@
+# Agent skills ship reference and helper scripts (Python, QML, shell) that are
+# not part of the project source. Keep them out of GitHub's language statistics.
+.opencode/skills/** linguist-vendored
