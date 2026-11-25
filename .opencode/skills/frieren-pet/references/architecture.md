@@ -22,6 +22,7 @@ icon with a DBusMenu.
 | `quickshell/frieren/tray.c` | Native StatusNotifierItem and `com.canonical.dbusmenu` helper (compiled to `frieren-tray`) |
 | `quickshell/frieren/components/AuthDialog.qml` | OpenCode account card (status, key, terminal login) |
 | `quickshell/frieren/components/AboutDialog.qml` | About card (happy pose, author, repository, MIT license) |
+| `quickshell/frieren/components/SettingsDialog.qml` | Settings window (Pet, Sound & voice, Data, Model & account tabs) |
 | `quickshell/frieren/assets/poses/` | Six 228x256 PNG poses plus `poses.json` metadata |
 | `assets/frieren-sheet.png` | Source sprite sheet, kept as art reference |
 | `assets/poses-preview.png` | README showcase image (checked in) |
@@ -121,12 +122,26 @@ is `WlrKeyboardFocus.Exclusive`, but it blocks global keys while open.
 
 ### About dialog
 
-`aboutWin` is a fourth fullscreen `PanelWindow` masked to `AboutDialog`:
+`aboutWin` is a fullscreen `PanelWindow` masked to `AboutDialog`:
 
 - Visible only when `aboutOpen`; opened from the tray or IPC `about`.
 - Shows the happy pose, project description, author, repository link and the
   MIT license link. Escape or `✕` closes it.
-- Declared last, so it renders above the account dialog.
+
+### Settings window
+
+`settingsWin` is a fullscreen `PanelWindow` masked to `SettingsDialog`,
+declared last so it renders above every other dialog:
+
+- Visible only when `settingsOpen`; opened from the tray or IPC `settings`
+  (optional tab: `pet`, `sound`, `data`, `account`).
+- Left tabs switch the right pane; the tab lives in `root.settingsTab` and the
+  dialog reports clicks through `pickTab`.
+- The `account` tab embeds `AuthDialog`, so the model picker and the key flow
+  stay in one implementation. The auth poll timer also runs while the settings
+  window is open on that tab.
+- Voice choices come from `root.availableVoices`, filled by the `voiceLister`
+  process (same stem rules as the old tray voice menu).
 
 ## Theme
 

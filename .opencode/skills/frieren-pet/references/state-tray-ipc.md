@@ -76,45 +76,24 @@ It writes nothing itself: every action calls `qs -c frieren ipc call frieren`.
 
 ### Menu IDs
 
+The tray menu is intentionally short (5 entries). Every setting lives in the
+Settings window (`SettingsDialog.qml`, opened from the tray or the `settings`
+IPC method) instead of tray submenus.
+
 | ID | Item | Action |
 | --- | --- | --- |
 | 1 | Show pet / Hide pet | `restore` or `minimize` |
 | 2 | Open chat / Close chat | `toggle` |
-| 4 | Stop | `stop`, enabled only while busy |
-| 5 | Separator | none |
-| 6 | Settings submenu: Pet, Sound & voice, Data | none |
-| 23 | Pet submenu | none |
-| 7 | Wander | `wander toggle` |
-| 8 | Sleep when idle | `sleep toggle` |
-| 9 | Blink | `blink toggle` |
-| 10 | Size submenu | none |
-| 11 | Small | `scale 0.85` |
-| 12 | Medium | `scale 1.0` |
-| 13 | Large | `scale 1.15` |
-| 14 | Reset position | `resetpos` |
-| 24 | Sound & voice submenu | none |
-| 20 | Sound | `sound toggle` |
-| 21 | Voice replies | `voice toggle` |
-| 26 | Voice submenu (radio per downloaded voice) | none |
-| 30-49 | Voice `<id>` | `voiceid <id>`, checked when current |
-| 27 | Volume submenu | none |
-| 50-53 | Low / Medium / Loud / Max | `volume 40|80|100|130`, checked when current |
-| 25 | Data submenu | none |
-| 18 | Activity log | `log toggle` |
-| 22 | Backup database | `backup` |
-| 54 | Discord alerts | `discord toggle` |
-| 15 | Separator | none |
-| 16 | Quit | `quit` |
-| 17 | Account / Setup account | `auth` |
+| 6 | Settings | `settings` |
 | 19 | About | `about` |
+| 16 | Quit | `quit` |
 
-IDs 30-49 are dynamic: index into the sorted `voices/*.onnx` list (plus
-legacy `en.onnx`). A download changes the Voice submenu; the helper watches
-the voices dir and bumps the layout revision.
-Keep IDs stable. ID 3 (`New conversation`) was retired; do not reuse it for a
-different item. `emit_state_changed()` sends updates for IDs 1, 2, 4, 7, 8, 9,
-20, 21, 18, 54, 11 to 13, 17 and the current 30-49 range. Add new toggle or radio
-IDs to that list.
+Older submenu IDs (4 `Stop`, 5/15 separators, 7 `Wander`, 8 `Sleep`, 9 `Blink`,
+10-13 `Size`, 14 `Reset position`, 17 `Account`, 18 `Activity log`, 20 `Sound`,
+21 `Voice replies`, 22 `Backup`, 23-27 submenu containers, 30-49 voice radios,
+50-53 volume presets, 54 `Discord alerts`) are reserved. Do not reuse them for
+different items; the tray helper still knows some of them but no longer shows
+them. ID 3 (`New conversation`) was retired earlier and stays retired.
 
 ### Toggle type rules
 
@@ -172,6 +151,7 @@ The handler target is `frieren`.
 | `stop` | none | Stop the current run |
 | `hide` | none | Close the chat |
 | `auth` | none | Open the OpenCode account dialog |
+| `settings` | `pet`, `sound`, `data` or `account` | Open the Settings window on that tab |
 | `about` | none | Open the About dialog |
 | `ping` | none | Return `pong` |
 | `minimize` | none | Hide the pet to the tray |
@@ -206,13 +186,14 @@ qs -c frieren ipc call frieren sleep toggle
 
 1. Default in `shell.qml`.
 2. Load in `loadState`, save in `saveState`.
-3. Add the field to `State` defaults and `read_state` in `tray.c`.
-4. Add a menu entry with a stable ID and a valid `toggle-type`.
-5. Add it to the `dynamic_ids` list in `emit_state_changed`.
-6. Add the action in `activate`.
-7. Add an IPC method for script access.
-8. Update `quickshell/frieren/README.md`.
-9. Rebuild with `install.sh` and restart.
+3. Add the field to `State` defaults and `read_state` in `tray.c` only if the
+   tray needs it (the 5-item menu only needs `minimized` and `chatOpen`).
+4. Add a control in `components/SettingsDialog.qml` and wire it through the
+   `settingsWin` bindings in `shell.qml` (properties down, signals up).
+5. Add an IPC method for script access (settings serialize through
+   `setToggle` / `mergeSettings` so `settings.json` stays in sync).
+6. Update `quickshell/frieren/README.md`.
+7. Rebuild with `install.sh` and restart.
 
 ## Security notes
 

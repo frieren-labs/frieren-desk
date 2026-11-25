@@ -8,7 +8,8 @@ if ! command -v gdbus >/dev/null 2>&1; then
 fi
 
 # 7 Wander, 8 Sleep when idle, 9 Blink, 11 Small, 12 Medium, 13 Large,
-# 18 Activity log.
+# 18 Activity log. These IDs back the Settings window now (the 5-item tray
+# menu shows no toggles), but the helper still reports their props.
 gdbus call --session \
   --dest org.kde.StatusNotifierItem-frieren \
   --object-path /MenuBar \
