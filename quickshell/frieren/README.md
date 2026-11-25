@@ -215,7 +215,9 @@ Reminders reuse the same helper, with the violet embed and the think pose.
 
 `/remind <when> <text>` stores a dated reminder, `/remind someday <text>`
 (a.k.a. `sometime`, `todo`, `backlog`) stores a dateless backlog task,
-`/tasks` lists open ones with their ids, `/done <id>` closes one. Times are
+`/tasks` lists open ones with their ids, `/done <id|text>` closes one: a
+numeric id closes by the stable `reminders.id`, other text closes only on a
+single title match and asks which id when several match. Times are
 local; past times roll to the next valid slot:
 
 - `/remind in 20min stretch` (also `10m`, `2h`, `30s`, `3d`)

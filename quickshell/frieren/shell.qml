@@ -535,6 +535,8 @@ ShellRoot {
     // (local + Discord). Rows with due_at NULL are backlog: listed, never fired.
     // The opencode agent reads and writes this table directly for the
     // conversational loop; see opencode/agents/frieren.md.
+    // The stable close key is reminders.id, never a session or conversation id.
+    property string donePending: ""
     readonly property string reminderSchema: [
         "CREATE TABLE IF NOT EXISTS reminders (",
         "  id INTEGER PRIMARY KEY AUTOINCREMENT,",
@@ -729,6 +731,26 @@ ShellRoot {
         }
     }
 
+    // Title lookup for /done <text>: one clear match closes by its stable
+    // id, several matches ask for an id instead of closing at random.
+    Process {
+        id: doneFinder
+        running: false
+        stdinEnabled: true
+        command: ["sqlite3", "-json", "-cmd", ".timeout 5000", root.dbPath]
+        stdout: StdioCollector { id: doneFinderOut }
+        onStarted: {
+            doneFinder.stdinEnabled = true;
+            doneFinder.write(root.doneSearchSql());
+            doneFinder.stdinEnabled = false;
+        }
+        onExited: (code, status) => {
+            doneFinder.stdinEnabled = true;
+            if (code === 0) root.applyDoneSearch(doneFinderOut.text);
+            else root.addMessage("system", "Reminders: could not read the database.");
+        }
+    }
+
     Timer {
         interval: 60000
         running: true
@@ -891,16 +913,56 @@ ShellRoot {
         root.addMessage("system", "Reminder set for " + p.label + rep + ": " + title);
     }
 
-    function doneReminder(idText) {
-        const id = parseInt(String(idText || "").trim(), 10);
-        if (isNaN(id)) {
-            root.addMessage("system", "Usage: /done <id>. See ids with /tasks.");
-            return;
-        }
+    function completeReminder(id) {
         root.queueReminderWrite(root.reminderSchema
             + "\nUPDATE reminders SET done = 1 WHERE id = " + id + ";"
             + "\nINSERT INTO reminder_events (reminder_id, kind) VALUES (" + id + ", 'done');");
         root.addMessage("system", "Marked reminder #" + id + " as done.");
+    }
+
+    function doneReminder(idText) {
+        const raw = String(idText || "").trim();
+        if (raw.length === 0) {
+            root.addMessage("system", "Usage: /done <id|text>. See ids with /tasks.");
+            return;
+        }
+        if (/^\d+$/.test(raw)) {
+            root.completeReminder(parseInt(raw, 10));
+            return;
+        }
+        if (doneFinder.running) {
+            root.addMessage("system", "Still looking up reminders, try again in a second.");
+            return;
+        }
+        root.donePending = raw;
+        doneFinder.running = true;
+    }
+
+    function doneSearchSql() {
+        const needle = "%" + String(root.donePending || "").replace(/[%_]/g, "") + "%";
+        return root.reminderSchema
+            + "\nSELECT id, title FROM reminders WHERE done = 0 AND title LIKE "
+            + root.sqlLiteral(needle) + " ORDER BY id LIMIT 6;";
+    }
+
+    function applyDoneSearch(raw) {
+        const query = String(root.donePending || "");
+        let rows = [];
+        try {
+            rows = JSON.parse(String(raw || "[]"));
+        } catch (e) {}
+        if (!Array.isArray(rows)) rows = [];
+        if (rows.length === 0) {
+            root.addMessage("system", "No open reminder matches '" + query + "'. See ids with /tasks.");
+            return;
+        }
+        if (rows.length > 1) {
+            const lines = rows.map(row => "#" + row.id + " · " + String(row.title || ""));
+            root.addMessage("system", "Several open reminders match '" + query + "':\n"
+                + lines.join("\n") + "\nSay /done <id> to close one.");
+            return;
+        }
+        root.completeReminder(parseInt(rows[0].id, 10));
     }
 
     // The JSON file used before the database existed. It is imported once and
@@ -1517,7 +1579,7 @@ ShellRoot {
             return true;
         }
         if (cmd === "help") {
-            root.addMessage("system", "Commands: /new, /retry, /export, /stats, /model provider/name, /agent name, /sound on|off, /voice on|off|<id>, /volume 10-150, /discord on|off|test, /remind <when> <text> (or /remind someday <text>), /tasks, /done <id>, /help. Prefix with @window to include the focused Hyprland window. Drop files into the chat to attach @paths.");
+            root.addMessage("system", "Commands: /new, /retry, /export, /stats, /model provider/name, /agent name, /sound on|off, /voice on|off|<id>, /volume 10-150, /discord on|off|test, /remind <when> <text> (or /remind someday <text>), /tasks, /done <id|text>, /help. Prefix with @window to include the focused Hyprland window. Drop files into the chat to attach @paths.");
             return true;
         }
         if (cmd === "agent") {

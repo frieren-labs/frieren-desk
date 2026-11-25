@@ -29,7 +29,10 @@ jobs:
       - name: reminders regression tests
         run: |
           sudo apt-get install -y sqlite3
-          bash tests/test-reminders.sh
+          for t in tests/test-*.sh; do
+            echo "running $t"
+            bash "$t"
+          done
 
       - name: install qmllint and Qt QML modules
         run: sudo apt-get install -y qt6-declarative-dev-tools qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-templates

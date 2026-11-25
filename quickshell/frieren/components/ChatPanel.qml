@@ -91,7 +91,7 @@ Item {
         { cmd: "/discord", desc: "Discord alerts: /discord on|off|test" },
         { cmd: "/remind", desc: "set reminder: /remind tomorrow 9am call mom (or /remind someday fix lldap)" },
         { cmd: "/tasks", desc: "list open reminders" },
-        { cmd: "/done", desc: "close reminder: /done <id>" },
+        { cmd: "/done", desc: "close reminder: /done <id|text>" },
         { cmd: "/help", desc: "list commands" }
     ]
     readonly property var atCommands: [

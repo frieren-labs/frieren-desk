@@ -162,3 +162,38 @@ CREATE TABLE IF NOT EXISTS reminders (
   explicitly instead of asserting nothing is pending.
 - The pet fires due reminders itself every minute (local popup plus Discord).
   Never poll in a loop; one query per question is enough.
+
+## Closing tasks
+
+Task state lives only in `frieren.db`, table `reminders` (`done = 0` open,
+`done = 1` closed). The stable close key is `reminders.id`
+(`INTEGER PRIMARY KEY AUTOINCREMENT`). It is independent of any opencode or
+chat session: closing must work from a different session than the one that
+created the task. Never use a session, conversation, or message id to close a
+task, and never treat a summary or a conversational reply as the update.
+
+- When the user says a task is done ("ya resolvi X", "cierra X", "marca X
+  como hecha"), update the persistent row, not just the chat. A reply alone
+  does not close anything.
+- Resolve what to close against open rows only (`WHERE done = 0`):
+  - `/done <id>` (numeric) closes that id directly.
+  - Otherwise search open rows by title over stdin (never argv):
+    `sqlite3 -json "$db" <<< "SELECT id, title FROM reminders
+    WHERE done = 0 AND title LIKE '%<text>%' ORDER BY id LIMIT 6;"`
+    Strip `%` and `_` from the typed text before building the `LIKE` pattern.
+- Disambiguate before writing:
+  - Zero matches: say nothing matched and show `/tasks` ids.
+  - Exactly one match: close that row by its stable `id`.
+  - Several matches: list each `#id` with its title and ask which one to
+    close. Never close one at random.
+- Close with one write plus an audit row, over stdin:
+  `UPDATE reminders SET done = 1 WHERE id = <id>;`
+  `INSERT INTO reminder_events (reminder_id, kind) VALUES (<id>, 'done');`
+- Then verify against the same table `/tasks` reads, and only then confirm:
+  `SELECT id, title FROM reminders WHERE done = 0 AND id = <id>;`
+  must return zero rows, and
+  `SELECT done FROM reminders WHERE id = <id>;` must return `1`.
+  If the row still appears in
+  `SELECT id, title FROM reminders WHERE done = 0 ORDER BY
+  due_at IS NULL, due_at LIMIT 20;`, the close failed: report the error,
+  do not claim success.
