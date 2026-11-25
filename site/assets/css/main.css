@@ -514,17 +514,63 @@ img.deco-left {
 .footer-inner {
   max-width: var(--maxw);
   margin: 0 auto;
-  padding: 26px 40px 40px;
+  padding: 40px 40px 32px;
   font-size: 14px;
   color: var(--faint);
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .footer-inner strong { color: var(--muted); }
 .footer-inner p { margin: 0; }
+
+.footer-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.footer-col h3 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.footer-col a {
+  display: block;
+  width: fit-content;
+  padding: 5px 0;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.footer-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.footer-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+}
+
+.footer-bottom p { max-width: 70ch; }
+
+.social {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.social a { color: var(--muted); }
+
+.social a:hover { color: var(--gold); }
 
 /* Draggable page mascot (moved with transform for smooth dragging) */
 
@@ -708,4 +754,5 @@ img.deco-left {
   .hero { padding: 90px 16px 70px; }
   .page { padding-left: 16px; padding-right: 16px; }
   .footer-inner { padding-left: 16px; padding-right: 16px; }
+  .footer-cols { grid-template-columns: 1fr; }
 }
