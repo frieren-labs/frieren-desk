@@ -36,6 +36,8 @@ ShellRoot {
     property bool authSaving: false
     property bool authOpen: false
     property bool aboutOpen: false
+    property bool settingsOpen: false
+    property string settingsTab: "pet"
     property bool stateLoaded: false
     property var authCredentials: []
     property var authCleanupIds: []
@@ -44,6 +46,8 @@ ShellRoot {
     property string authQueuedKey: ""
     property var availableModels: []
     property bool modelsLoading: false
+    property var availableVoices: []
+    property bool voicesLoading: false
 
     property bool chatOpen: false
     property bool busy: false
@@ -2310,6 +2314,48 @@ ShellRoot {
         root.refreshModels();
     }
 
+    function openSettings(tab) {
+        if (typeof tab === "string" && tab.length > 0) root.settingsTab = tab;
+        root.settingsOpen = true;
+        root.checkAuth();
+        root.refreshModels();
+        root.refreshVoices();
+    }
+
+    function refreshVoices() {
+        if (voiceLister.running) return;
+        root.voicesLoading = true;
+        voiceLister.running = true;
+    }
+
+    function applyVoiceList(raw) {
+        root.voicesLoading = false;
+        const lines = String(raw || "").split("\n");
+        const out = [];
+        for (let i = 0; i < lines.length; i += 1) {
+            const v = lines[i].trim();
+            if (v.length > 0 && out.indexOf(v) < 0) out.push(v);
+        }
+        out.sort();
+        root.availableVoices = out;
+    }
+
+    function applyScaleValue(v) {
+        v = Math.max(0.7, Math.min(1.4, v));
+        if (isNaN(v)) return;
+        root.petScale = v;
+        root.saveState();
+        root.mergeSettings({ scale: root.petScale });
+    }
+
+    function resetPetPosition() {
+        root.petX = 80;
+        root.petY = 220;
+        root.petPlaced = false;
+        root.placePet();
+        if (root.petPlaced) root.saveState();
+    }
+
     function refreshModels() {
         if (modelLister.running) return;
         root.modelsLoading = true;
@@ -2625,6 +2671,24 @@ ShellRoot {
     }
 
     Process {
+        id: voiceLister
+        running: false
+        command: ["sh", "-c",
+            'd="$0";'
+            + ' for f in "$d"/*.onnx; do'
+            + ' [ -e "$f" ] || continue;'
+            + ' [ -f "$f.json" ] || continue;'
+            + ' basename "$f" .onnx;'
+            + ' done;'
+            + ' [ -f "$(dirname "$d")/en.onnx" ] && echo "en.onnx";'
+            + ' exit 0',
+            (Quickshell.env("XDG_DATA_HOME") || root.home + "/.local/share") + "/frieren/voice/voices"]
+        stdout: StdioCollector { id: voiceListOut }
+        stderr: StdioCollector { id: voiceListErr }
+        onExited: (code, status) => root.applyVoiceList(voiceListOut.text)
+    }
+
+    Process {
         id: authLogout
         property string purpose: "cleanup"
         running: false
@@ -2659,7 +2723,8 @@ ShellRoot {
     Timer {
         interval: 4000
         repeat: true
-        running: root.authOpen && !root.authSaving
+        running: (root.authOpen
+            || (root.settingsOpen && root.settingsTab === "account")) && !root.authSaving
         onTriggered: root.checkAuth()
     }
 
@@ -2715,6 +2780,8 @@ ShellRoot {
 
         function auth(): void { root.openAuthDialog() }
 
+        function settings(tab: string): void { root.openSettings(tab) }
+
         function about(): void { root.aboutOpen = true }
 
         function ping(): string { return "pong" }
@@ -2755,20 +2822,10 @@ ShellRoot {
 
         function scale(value: string): void {
             const v = parseFloat(value);
-            if (!isNaN(v)) {
-                root.petScale = Math.max(0.7, Math.min(1.4, v));
-                root.saveState();
-                root.mergeSettings({ scale: root.petScale });
-            }
+            if (!isNaN(v)) root.applyScaleValue(v);
         }
 
-        function resetpos(): void {
-            root.petX = 80;
-            root.petY = 220;
-            root.petPlaced = false;
-            root.placePet();
-            if (root.petPlaced) root.saveState();
-        }
+        function resetpos(): void { root.resetPetPosition() }
 
         function quit(): void { Qt.quit() }
     }
@@ -3002,6 +3059,81 @@ ShellRoot {
             height: implicitHeight
             theme: theme
             onClose: root.aboutOpen = false
+        }
+    }
+
+    // ---------------- settings window (large, tabbed) ----------------
+    PanelWindow {
+        id: settingsWin
+
+        visible: root.settingsOpen
+        screen: petWin.screen
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.namespace: "frieren-settings"
+        WlrLayershell.keyboardFocus: root.settingsOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        focusable: true
+
+        anchors {
+            top: true
+            left: true
+            right: true
+            bottom: true
+        }
+
+        implicitWidth: settingsWin.screen ? settingsWin.screen.width : 1920
+        implicitHeight: settingsWin.screen ? settingsWin.screen.height : 1080
+
+        mask: Region { item: settingsDialog }
+
+        SettingsDialog {
+            id: settingsDialog
+            visible: settingsWin.visible
+            anchors.centerIn: parent
+            width: implicitWidth
+            height: implicitHeight
+            theme: theme
+
+            tab: root.settingsTab
+            wanderEnabled: root.wanderEnabled
+            sleepEnabled: root.sleepEnabled
+            blinkEnabled: root.blinkEnabled
+            petScale: root.petScale
+            soundEnabled: root.soundEnabled
+            voiceSpeak: root.voiceSpeak
+            voiceId: root.voiceId
+            voiceVolume: root.voiceVolume
+            voices: root.availableVoices
+            voicesLoading: root.voicesLoading
+            logEnabled: root.logEnabled
+            discordEnabled: root.discordEnabled
+            authProvider: root.authProvider
+            modelName: root.modelName
+            models: root.availableModels
+            modelsLoading: root.modelsLoading
+            authStatus: root.authStatus
+            authDetail: root.authDetail
+            authMessage: root.authMessage
+            authMessageOk: root.authMessageOk
+            authMessageError: root.authMessageError
+            authChecking: root.authChecking
+            authBusy: root.authSaving
+
+            onPickTab: id => root.settingsTab = id
+            onToggleSetting: key => root.setToggle(key, "toggle")
+            onScaleSelected: value => root.applyScaleValue(value)
+            onResetPosition: root.resetPetPosition()
+            onPickVoice: id => root.setVoice(id)
+            onVolumeSelected: value => root.setVolume(String(value))
+            onTestVoice: root.speak("Hi, this is Frieren. How can I help?")
+            onRunBackup: root.runBackup()
+            onTestDiscord: root.testDiscord()
+            onSaveModel: id => root.setModel(id)
+            onSaveKey: key => root.saveAuthKey(key)
+            onTerminalLogin: root.startTerminalLogin()
+            onCheckAuth: root.checkAuth()
+            onClose: root.settingsOpen = false
         }
     }
 }

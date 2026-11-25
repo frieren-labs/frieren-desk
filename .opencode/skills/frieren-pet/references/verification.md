@@ -46,8 +46,12 @@ cat ~/.local/state/frieren/state.json
 .opencode/skills/frieren-pet/scripts/tray-state.sh
 ```
 
-The tray output must show `toggle-type: checkmark` for Wander, Sleep when idle,
-Blink and Activity log, and `toggle-type: radio` for Size. `check` is a bug.
+The tray layout is five plain entries (pet, chat, settings, about, quit).
+Only the pet and chat labels update dynamically. `tray-state.sh` still queries
+the backing setting IDs (7, 8, 9, 18, 11, 12, 13): the props must show
+`toggle-type: checkmark` for Wander, Sleep when idle, Blink and Activity log,
+and `toggle-type: radio` for Size. `check` is a bug. Those states are now
+surfaced in the Settings window instead of tray submenus.
 
 The helper should be a child of `qs` and disappear within a second of
 `qs -c frieren ipc call frieren quit`. It should not spawn periodic `qs ...
@@ -55,7 +59,7 @@ ping` children; idle CPU is zero and state changes arrive through the Gio file
 monitor. `frieren-tray` should sit at about 7 MB RSS; a much larger process
 means a stale helper is still running.
 
-Toggle each item and confirm all three layers agree:
+Toggle each setting from the Settings window and confirm all three layers agree:
 
 1. The IPC call succeeded.
 2. `state.json` changed.
@@ -126,7 +130,7 @@ Toggle each item and confirm all three layers agree:
   `exit_code: -1` and `error: "stopped"`.
 - `sqlite3 ~/.local/state/frieren/frieren.db "select prompt, ok, tools_failed from turns;"`.
 - A failed tool sets `ok = 0` on its turn even when opencode exits 0.
-- Tray → Settings → Activity log off stops new `turns`/`tools` rows; history
+- Settings → `Data` → Activity log off stops new `turns`/`tools` rows; history
   and the existing files stay.
 
 ### Theme
@@ -142,13 +146,30 @@ Toggle each item and confirm all three layers agree:
 - The repository and license links open in the browser.
 - Escape and `✕` close it; the rest of the desktop stays clickable (mask).
 
+### Settings
+
+- Tray → `Settings` opens the large window with `Pet`, `Sound & voice`,
+  `Data` and `Model & account` tabs. `qs -c frieren ipc call frieren settings
+  sound` opens it directly on a tab.
+- Pet tab toggles wander, sleep and blink, picks Small / Medium / Large and
+  resets the position. Each change lands in `state.json` and
+  `settings.json`.
+- Sound tab toggles UI sounds and voice replies, lists the downloaded voices
+  with the current one checked, picks the volume preset and speaks a test
+  line. With no voices installed, the empty hint names `frieren-voice list`.
+- Data tab toggles the activity log and Discord alerts, posts a test embed
+  and runs a database backup.
+- The account tab embeds the same `AuthDialog` as the standalone window:
+  status, model picker, key import and terminal login all behave the same.
+- Escape and `✕` close it; the rest of the desktop stays clickable (mask).
+
 ### Account
 
-- With credentials, the tray shows `Account` and the dialog shows
-  `Connected` with the method labels.
-- Without credentials (empty `XDG_DATA_HOME`, no `OPENCODE_API_KEY`), the tray
-  shows `Setup account`, the chat shows the banner, and sending a
-  message opens the dialog instead of running opencode.
+- With credentials, the Settings account tab shows `Connected` with the
+  method labels.
+- Without credentials (empty `XDG_DATA_HOME`, no `OPENCODE_API_KEY`), the chat
+  shows the banner, and sending a message opens the account dialog instead
+  of running opencode.
 - Saving a key clears the field, shows `Key saved.`, flips the status to
   `Connected`, removes the banner and writes `auth: true` to `state.json`.
 - Saving again replaces the previous `Frieren` credential, so
@@ -166,8 +187,10 @@ Toggle each item and confirm all three layers agree:
 | Chat opens but no reply | `opencode` in PATH, auth, `opencode auth list`, stdin closed |
 | Account says not connected | `opencode auth list`, env vars, QML auth logs |
 | Key save fails | `opencode auth import`, `auth switch`, dialog message |
-| Tray label never changes | `auth` in `state.json`, `notify_state` includes ID 17 |
+| Tray label never changes | `minimized` / `chatOpen` in `state.json`, `ItemIsMenu` client refresh |
+| Settings window does not open | `settings` IPC, `settingsOpen`, monitor geometry |
 | Pet stuck casting | `toolActive`, last tool status, late events |
+| Menu checkboxes missing | `toggle-type` values, Quickshell warning log |
 | Stale text after fresh | late stdout from the old process, run ID guard |
 | Tray icon missing | helper process, StatusNotifierWatcher, DMS tray settings |
 | Orphan tray icon | helper PPID is not `qs`; parent death signal, restart helper |

@@ -1,16 +1,15 @@
 # Frieren · desktop pet
 
 Chibi Frieren on the desktop with a chat bubble that talks to `opencode` and can
-change the system. She also has a real system tray icon with a settings menu.
+change the system. She also has a real system tray icon with a short menu.
 
 ## Usage
 
 - App menu: open **Frieren** (or run `~/.local/bin/frieren`), installed by
   `install.sh`. It starts the pet and opens the chat when she is closed, or
   toggles the chat when she is running.
-- Account: tray icon → **Setup account** when not connected, **Account**
-  when connected (see below). The chat shows a banner while the account is not
-  connected.
+- Account: tray icon → **Settings** → **Model & account** (see below). The
+  chat shows a banner while the account is not connected.
 - Drag her with the mouse: the position is saved in
   `~/.local/state/frieren/state.json`.
 - Drop her on the top bar or the bottom dock to minimize her to the tray icon.
@@ -63,6 +62,7 @@ qs -c frieren ipc call frieren listen
 qs -c frieren ipc call frieren say "done, starting from scratch"
 qs -c frieren ipc call frieren hide
 qs -c frieren ipc call frieren auth
+qs -c frieren ipc call frieren settings
 qs -c frieren ipc call frieren about
 qs -c frieren ipc call frieren minimize
 qs -c frieren ipc call frieren restore
@@ -87,14 +87,14 @@ DBusMenu:
 
 - `Show / Hide pet`
 - `Open / Close chat`
-- `Stop` (enabled while opencode is busy)
-- `Setup account` when not connected, `Account` when connected
-- `Settings` → `Pet` (`Wander`, `Sleep when idle`, `Blink`, `Size`, `Reset
-  position`), `Sound & voice` (`Sound`, `Voice replies`, `Voice` with one
-  radio per downloaded voice, current one checked), `Data` (`Activity log`,
-  `Backup database`, `Discord alerts`)
+- `Settings` (opens the settings window: `Pet`, `Sound & voice`, `Data`,
+  `Model & account`)
 - `About` (project, author, happy Frieren, repository and MIT license)
 - `Quit`
+
+Every setting that used to live in the tray submenus (wander, sleep, blink,
+size, sound, voice, volume, activity log, backup, discord) now lives in the
+settings window, together with the model picker and the opencode account.
 
 The helper uses only GIO/GDBus, starts with the shell, and uses a fixed bus name
 so reloads do not duplicate the icon. State changes are watched with a Gio file
@@ -106,8 +106,8 @@ instead of polling its IPC. It sits at about 7 MB RSS with zero idle CPU.
 A fresh install has no opencode credentials, so the first message would fail.
 The pet covers that setup:
 
-- Tray menu → **Setup account** (or **Account** when connected) opens the
-  account dialog. The chat banner opens the same dialog.
+- Tray menu → **Settings** → **Model & account** (or the account button when
+  not connected) opens the account dialog. The chat banner opens the same dialog.
 - **Save key**: paste the API key for the provider in `modelName`
   (`opencode-go` by default). The dialog sends the key to `opencode auth import`
   over stdin and then runs `opencode auth switch`, with the label `Frieren`.
@@ -167,7 +167,7 @@ hand-editing it applies without reopening the pet.
 
 - UI sounds (`assets/sounds/`: pop on send/stop, chime on success, thud on
   error) play through `paplay`, `aplay` or `ffplay`, whichever exists. Toggle
-  with tray → `Settings` → `Sound` or `/sound off`.
+  with Settings → `Sound & voice` or `/sound off`.
 - A turn longer than 30 s that finishes while the chat is closed sends a
   `notify-send` ("done in Ns" or the error).
 - Voice replies read the last answer aloud. Backend order: `piper` / `piper-tts` with a downloaded model, then
@@ -179,7 +179,7 @@ hand-editing it applies without reopening the pet.
   <id>` selects it, `/voice <id>` does the same from chat, `/voice on|off`
   toggles replies, `qs -c frieren ipc call frieren say "text"` speaks once.
   The choice persists in `settings.json` as `voiceId`.
-- Volume: tray → `Settings` → `Sound & voice` → `Volume` (Low 40 / Medium 80 /
+- Volume: Settings → `Sound & voice` → `Volume` (Low 40 / Medium 80 /
   Loud 100 / Max 130), `/volume 10-150`, `qs ... ipc call frieren volume 80`,
   or `settings.json` `volume`. Scaled with ffmpeg (else full volume).
 
@@ -197,7 +197,7 @@ Setup (opt-in, off by default):
    `DISCORD_WEBHOOK_URL=<url>`) and lock it down: `chmod 600` on the file.
    The notifier refuses to post from a world-readable file. The URL never
    appears in argv, `ps`, `state.json` or logs: the script reads it itself.
-3. Enable it: tray → `Settings` → `Data` → `Discord alerts`, `/discord on`,
+3. Enable it: Settings → `Data` → `Discord alerts`, `/discord on`,
    or `qs -c frieren ipc call frieren discord on`.
 4. Check it: `/discord test` posts a test embed and reports the result.
 
@@ -284,7 +284,7 @@ Activity log (for a dashboard):
 
 - `ok` is `exit_code = 0` and no failed tool and no error event. A stopped run
   is recorded with `exit_code = -1` and `error = "stopped"`.
-- Disable the activity rows with tray → `Settings` → `Activity log`, or
+- Disable the activity rows with Settings → `Data` → `Activity log`, or
   `qs -c frieren ipc call frieren log false`. History keeps working.
 - `events.jsonl` grows with every event and is rotated once it passes ~5 MB
   (last 5000 lines are kept); delete it whenever you want to start over.

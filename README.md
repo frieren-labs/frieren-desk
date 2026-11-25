@@ -58,8 +58,8 @@ Repo: https://github.com/frieren-labs/frieren-desk
    or the app menu entry.
 
 5. Account setup is manual: tell the user to open the tray icon and choose
-   "Setup account" (API key via opencode auth import, or Terminal login for
-   OAuth flows). Verify with: opencode auth list --format json.
+   "Settings" then "Model & account" (API key via opencode auth import, or
+   Terminal login for OAuth flows). Verify with: opencode auth list --format json.
    An OPENCODE_API_KEY in the environment also counts as connected.
 
 6. Model check: the model in ~/.config/opencode/agents/frieren.md and
@@ -93,8 +93,10 @@ to opencode auth import only.
 | On the desktop: click to chat, double-click for a fresh conversation, right-click for history. | Markdown replies, selectable text, copy buttons, slash-command completion. |
 | ![Activity panel](assets/showcase/shot-stats.png) | ![Account dialog](assets/showcase/shot-auth.png) |
 | Activity panel: turns, success rate and average time per day. | Account dialog: API key or terminal login, plus the model picker. |
-| ![About dialog](assets/showcase/shot-about.png) | |
-| About dialog: project, author, repository and license. | |
+| ![About dialog](assets/showcase/shot-about.png) | ![Settings window](assets/showcase/shot-settings.png) |
+| About dialog: project, author, repository and license. | Settings window: Pet, Sound & voice, Data and Model & account tabs. |
+| ![Settings voices](assets/showcase/shot-settings-voice.png) | |
+| Sound & voice tab: installed voices with the current one checked, volume presets. | |
 
 ## Docs
 

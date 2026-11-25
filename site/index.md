@@ -61,7 +61,7 @@ replies and code blocks, slash-command completion.
 
 ### Real tray icon
 A native StatusNotifier helper (`tray.c`, compiled by the installer) with a
-settings menu. About 7 MB RSS, zero idle CPU.
+short menu (pet, chat, settings, about, quit). About 7 MB RSS, zero idle CPU.
 
 ### Wandering pet
 She breathes, blinks, bobs, leans toward your cursor and wanders on her own.
@@ -120,6 +120,16 @@ Real screenshots from a running session.
 <figure>
   <img src="{{ '/assets/img/shot-stats.png' | relative_url }}" alt="Activity panel" loading="lazy">
   <figcaption>Activity panel: turns, success rate and average time per day.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{ '/assets/img/shot-settings.png' | relative_url }}" alt="Settings window, Pet tab" loading="lazy">
+  <figcaption>Settings window: Pet, Sound & voice, Data and Model & account tabs.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{ '/assets/img/shot-settings-voice.png' | relative_url }}" alt="Settings window, Sound and voice tab" loading="lazy">
+  <figcaption>Sound & voice tab: UI sounds, installed voices with the current one checked, volume presets.</figcaption>
 </figure>
 
 <figure>
@@ -211,7 +221,7 @@ qs -c frieren ipc call frieren ping
 
 <div class="note" markdown="1">
 <strong>First login is manual.</strong> Open the tray icon and choose
-<strong>Setup account</strong>: paste an API key (sent over stdin to
+<strong>Settings</strong> then <strong>Model & account</strong>: paste an API key (sent over stdin to
 <code>opencode auth import</code>, never written to a file) or use Terminal
 login for OAuth flows. Check with <code>opencode auth list --format json</code>.
 An <code>OPENCODE_API_KEY</code> in the environment also counts as connected.
@@ -272,11 +282,7 @@ qs -c frieren ipc call frieren quit
 
 - `Show / Hide pet`
 - `Open / Close chat`
-- `Stop` (enabled while opencode is busy)
-- `Setup account` when not connected, `Account` when connected
-- `Settings` then `Pet` (`Wander`, `Sleep when idle`, `Blink`, `Size`, `Reset position`),
-  `Sound & voice` (`Sound`, `Voice replies`, `Voice` radios, `Volume`),
-  `Data` (`Activity log`, `Backup database`, `Discord alerts`)
+- `Settings` (window with `Pet`, `Sound & voice`, `Data`, `Model & account` tabs)
 - `About` (project, author, happy Frieren, repository, MIT license)
 - `Quit`
 
@@ -329,7 +335,7 @@ sqlite3 ~/.local/state/frieren/frieren.db \
   "select prompt, duration_ms from turns order by duration_ms desc limit 10;"
 ```
 
-Disable activity rows from tray `Settings` then `Data` then `Activity log`
+Disable activity rows from Settings then `Data` then `Activity log`
 (history keeps working). Raw events also append to `events.jsonl`, rotated past
 about 5 MB.
 

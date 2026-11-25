@@ -45,8 +45,9 @@ skills cannot know.
 | Backend, events, sessions | `shell.qml` (`send`, `handleLine`, `upsertTool`, `Process agent`) |
 | OpenCode account | `shell.qml` (auth properties and processes), `components/AuthDialog.qml`, `tray.c` |
 | About dialog | `components/AboutDialog.qml`, `shell.qml` (`aboutWin`, IPC `about`), `tray.c` |
+| Settings window | `components/SettingsDialog.qml`, `shell.qml` (`settingsWin`, `openSettings`, `voiceLister`, IPC `settings`), `tray.c` |
 | State or settings | `shell.qml` (`loadState`, `saveState`, `statePath`), `tray.c` |
-| Tray menu | `tray.c`, `.opencode/skills/frieren-pet/references/state-tray-ipc.md` |
+| Tray menu | `tray.c` (5 entries: pet, chat, settings, about, quit), `.opencode/skills/frieren-pet/references/state-tray-ipc.md` |
 | IPC | `shell.qml` (`IpcHandler`), `quickshell/frieren/README.md` |
 | Theme | `shell.qml` (`theme`, `applyDmsColors`, `applyDmsType`) |
 | New pose art | `assets/poses/*.png`, `assets/poses/poses.json`, `README.md` |

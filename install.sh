@@ -296,7 +296,7 @@ Try it now:
   ~/.local/bin/frieren           # app menu entry, or this command
   qs -c frieren ipc call frieren toggle
 
-Fresh install: open the tray icon and choose "Setup account" to add your API
+Fresh install: open the tray icon and choose "Settings" then "Model & account" to add your API
 key, or use Terminal login for providers that need a browser.
 
 Chat history and the activity log share ~/.local/state/frieren/frieren.db.

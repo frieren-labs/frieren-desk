@@ -364,7 +364,7 @@ static GVariant *props_for_id(App *app, gint32 id) {
         case ID_SEP_2:
             return item_props(NULL, TRUE, "separator", NULL, NULL, 0);
         case ID_SETTINGS:
-            return item_props("Settings", TRUE, "submenu", "submenu", NULL, 0);
+            return item_props("Settings", TRUE, NULL, NULL, NULL, 0);
         case ID_PET:
             return item_props("Pet", TRUE, "submenu", "submenu", NULL, 0);
         case ID_SOUND_MENU:
@@ -443,23 +443,7 @@ static GVariant *children_of(App *app, const gint32 *ids, gsize count) {
 
 static GVariant *build_node(App *app, gint32 id) {
     static const gint32 root_children[] = {
-        ID_TOGGLE_PET, ID_CHAT, ID_STOP, ID_SEP_1,
-        ID_AUTH, ID_SETTINGS, ID_ABOUT, ID_SEP_2, ID_QUIT
-    };
-    static const gint32 settings_children[] = {
-        ID_PET, ID_SOUND_MENU, ID_DATA
-    };
-    static const gint32 pet_children[] = {
-        ID_WANDER, ID_SLEEP, ID_BLINK, ID_SIZE, ID_RESET
-    };
-    static const gint32 sound_children[] = {
-        ID_SOUND, ID_VOICE, ID_VOICE_MENU, ID_VOLUME_MENU
-    };
-    static const gint32 volume_children[] = {
-        ID_VOL_LOW, ID_VOL_MED, ID_VOL_LOUD, ID_VOL_MAX
-    };
-    static const gint32 data_children[] = {
-        ID_LOG, ID_BACKUP, ID_DISCORD
+        ID_TOGGLE_PET, ID_CHAT, ID_SETTINGS, ID_ABOUT, ID_QUIT
     };
     static const gint32 size_children[] = {ID_SMALL, ID_MEDIUM, ID_LARGE};
 
@@ -474,29 +458,11 @@ static GVariant *build_node(App *app, gint32 id) {
                                      G_N_ELEMENTS(root_children)));
     }
     if (id == ID_SETTINGS) {
-        return make_node(id, props_for_id(app, id),
-                         children_of(app, settings_children,
-                                     G_N_ELEMENTS(settings_children)));
+        return make_node(id, props_for_id(app, id), empty_children());
     }
-    if (id == ID_PET) {
-        return make_node(id, props_for_id(app, id),
-                         children_of(app, pet_children,
-                                     G_N_ELEMENTS(pet_children)));
-    }
-    if (id == ID_SOUND_MENU) {
-        return make_node(id, props_for_id(app, id),
-                         children_of(app, sound_children,
-                                     G_N_ELEMENTS(sound_children)));
-    }
-    if (id == ID_VOLUME_MENU) {
-        return make_node(id, props_for_id(app, id),
-                         children_of(app, volume_children,
-                                     G_N_ELEMENTS(volume_children)));
-    }
-    if (id == ID_DATA) {
-        return make_node(id, props_for_id(app, id),
-                         children_of(app, data_children,
-                                     G_N_ELEMENTS(data_children)));
+    if (id == ID_PET || id == ID_SOUND_MENU || id == ID_VOLUME_MENU
+            || id == ID_DATA) {
+        return make_node(id, props_for_id(app, id), empty_children());
     }
     if (id == ID_VOICE_MENU) {
         GPtrArray *names = list_voices(app);
@@ -627,10 +593,7 @@ static void emit_state_changed(App *app) {
     }
 
     static const gint32 dynamic_ids[] = {
-        ID_TOGGLE_PET, ID_CHAT, ID_STOP, ID_AUTH,
-        ID_WANDER, ID_SLEEP, ID_BLINK, ID_SOUND, ID_VOICE, ID_LOG, ID_DISCORD,
-        ID_SMALL, ID_MEDIUM, ID_LARGE,
-        ID_VOL_LOW, ID_VOL_MED, ID_VOL_LOUD, ID_VOL_MAX
+        ID_TOGGLE_PET, ID_CHAT
     };
     GArray *voice_ids = g_array_new(FALSE, FALSE, sizeof(gint32));
     GPtrArray *names = list_voices(app);
@@ -849,6 +812,9 @@ static void activate(App *app, gint32 id) {
             break;
         case ID_CHAT:
             spawn_ipc(app, "toggle", NULL);
+            break;
+        case ID_SETTINGS:
+            spawn_ipc(app, "settings", "pet");
             break;
         case ID_STOP:
             spawn_ipc(app, "stop", NULL);
