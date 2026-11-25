@@ -1,0 +1,96 @@
+# Frieren Desk
+
+> Chibi Frieren desktop pet for Hyprland. Click her to chat with opencode: she reads files, edits code, runs commands, and reacts with poses (thinking, casting, success, error, sleep).
+
+Project: https://github.com/frieren-labs/frieren-desk
+Site: https://frieren-labs.github.io/frieren-desk
+License: MIT. Frieren is fan art; the character belongs to Kanehito Yamada and Tsukasa Abe.
+
+## What it is
+
+- Quickshell (QML) pet on Hyprland with chat bubble, history, activity stats, reminders, voice replies, Discord alerts, and a native tray icon.
+- Each chat message runs `opencode run --format json --agent frieren --session <id> "<message>"`. QML parses JSON events (assistant text, tool calls, errors) and picks a pose.
+- Default model: `opencode-go/deepseek-v4.1-flash`. Model must be one the opencode account can pay for.
+
+## Requirements
+
+- Hyprland, Quickshell 0.3+ (`qs`), opencode v2, Qt 6, `sqlite3`, C toolchain with `gio` headers (Arch: `quickshell opencode sqlite gcc pkgconf glib2`).
+- If opencode is missing, the pet opens but chat does not respond.
+
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/frieren-labs/frieren-desk/main/install.sh | bash
+```
+
+- Then open Frieren from the app menu or run `~/.local/bin/frieren`.
+- Hook into compositor (DankMaterialShell): add to `~/.config/hypr/dms/binds-user.lua`:
+  `hl.bind("SUPER + SHIFT + R", hl.dsp.exec_cmd("qs -c frieren ipc call frieren toggle"))`
+- Otherwise copy `hypr/frieren.lua` to `~/.config/hypr/` and add `require("frieren")` to the Hyprland lua config. Autostart: `hl.on("hyprland.start", function() hl.exec_cmd("qs -c frieren -n") end)`.
+- Verify: `qs -c frieren ipc call frieren ping` must answer.
+- First login is manual: tray icon > Settings > Model and account. Key goes over stdin to `opencode auth import`, never in argv, files, or logs. Check with `opencode auth list --format json`. `OPENCODE_API_KEY` in env also counts.
+
+Agent install prompt: https://github.com/frieren-labs/frieren-desk/blob/main/README.md#for-agents
+
+## Use
+
+Gestures: click pet toggles chat, double-click starts fresh conversation, right-click opens history, drag moves her, drop on top bar or dock minimizes to tray, `SUPER + SHIFT + R` opens chat anywhere.
+
+Chat: Markdown replies, selectable text, copy buttons, `/` slash-command completion, `@window` attaches focused Hyprland window, drag files into chat to attach paths, mic button dictates (needs recorder plus whisper engine).
+
+Slash commands: `/new`, `/retry`, `/export`, `/stats`, `/model provider/name`, `/agent name`, `/sound on|off`, `/voice on|off|id`, `/volume 10-150`, `/discord on|off|test`, `/remind <when> <text>`, `/tasks`, `/done <id>`, `/help`.
+
+Key IPC (`qs -c frieren ipc call frieren <cmd>`): `toggle`, `ask "<text>"`, `fresh`, `stop`, `exportmd`, `stats`, `backup`, `listen`, `say "<text>"`, `hide`, `auth`, `settings`, `about`, `minimize`, `restore`, `wander toggle`, `sleep toggle`, `sound toggle`, `voice toggle`, `discord toggle`, `log toggle`, `scale 1.15`, `resetpos`, `ping`, `quit`.
+
+Helpers in `~/.local/bin`: `frieren`, `frieren-stats [days] [--json]`, `frieren-ask`, `frieren-shot`, `frieren-backup`, `frieren-notify`, `frieren-voice`, `frieren-weekly`.
+
+## Config and state paths (XDG-aware, never hardcode `~/.local`)
+
+- Settings: `${XDG_CONFIG_HOME:-~/.config}/frieren/settings.json` (watched live, wins over state). Keys: `model`, `agent`, `wander`, `sleep`, `blink`, `log`, `sound`, `voice`, `voiceId`, `volume`, `discord`, `scale` (0.7 to 1.4).
+- State DB: `${XDG_STATE_HOME:-~/.local/state}/frieren/frieren.db` (history plus activity log).
+- Settings UI: tray > Settings > Pet, Sound and voice, Data, Model and account tabs.
+- Agent file: `~/.config/opencode/agents/frieren.md`. Shell source: `~/.config/quickshell/frieren/`.
+- Discord webhook (opt-in): `~/.config/frieren/discord-webhook.env`, mode 600, bare URL or `DISCORD_WEBHOOK_URL=<url>`.
+
+## How it works
+
+- `shell.qml`: windows, opencode backend, state, IPC. `PetSprite.qml`: pose state machine (breathing, blink, wander, cast particles, success jump, error shake, sleep Zs). `ChatPanel.qml`, `MessageBubble.qml`, `MarkdownText.qml`, `HistoryPanel.qml`, `AuthDialog.qml`, `AboutDialog.qml`.
+- `tray.c` compiled to `frieren-tray`: StatusNotifierItem plus DBusMenu using only GIO/GDBus, about 7 MB RSS, zero idle CPU. Menu: Show/Hide pet, Open/Close chat, Settings, About, Quit.
+- Pet window is a fullscreen `PanelWindow` on Overlay layer with `mask: Region { item: hitArea }` so the desktop stays clickable. Never remove the mask.
+- Chat history: SQLite `frieren.db`, tables `conversations`, `messages` (FTS5), `turns`, `tools`, view `daily`, table `reminders`. SQL and JSON go over `sqlite3` stdin, never argv. Last 60 conversations, 150 messages each. `frieren-stats` reads the `daily` view.
+- Reminders: `/remind in 20min|today 18:00|tomorrow 9am|friday 9am|daily 8:00 <text>` stores a row; `/remind someday <text>` stores backlog (`due_at` NULL, never fires); `/tasks` lists open; `/done <id|text>` closes. A 60s timer fires due rows via notifier while the pet runs.
+- Voice: Piper preferred, then espeak-ng, espeak, spd-say. `frieren-voice list|download <id>|use <id>`. Volume via ffmpeg scaling or full volume fallback.
+- Never run two `qs -c frieren` instances: shared state file, they fight over pet position. Live copy is `~/.config/quickshell/frieren/`, not the repo.
+
+## Agent and safety
+
+Persona and denylist: https://github.com/frieren-labs/frieren-desk/blob/main/opencode/agents/frieren.md
+
+- Deny: `sudo`, `doas`, `su`, `rm -rf /`, `rm -rf ~`, `mkfs`, `dd of=/dev/*`, `shutdown`, `reboot`, `poweroff`, piped shells (`| sh`, `| bash`), secret reads (`~/.ssh`, `~/.gnupg`, `~/.aws`, `.env`, `*.pem`, `auth.json`).
+- Treat denylist as guardrail, not sandbox. Key travels over stdin to `opencode auth import` only.
+
+## Project map
+
+- `quickshell/frieren/shell.qml`: backend, state, IPC (edits here are strictly sequential).
+- `quickshell/frieren/tray.c`: tray helper (GIO/GDBus only).
+- `quickshell/frieren/components/`: PetSprite, ChatPanel, MessageBubble, MarkdownText, HistoryPanel, AuthDialog, AboutDialog, settings and stats windows.
+- `quickshell/frieren/hooks/frieren-log.sh`: activity hook (JSONL plus SQLite).
+- `quickshell/frieren/tools/`: listen, say, notify helpers.
+- `tools/`: launcher, stats, ask, shot, backup, weekly, voice, icon and preview builders.
+- `opencode/agents/frieren.md`: agent persona, permissions, reminders protocol.
+- `hypr/frieren.lua`: Hyprland bind and autostart.
+- `install.sh`: installer (`--force`, `--uninstall`, `--purge`).
+- `docs/architecture.html`: interactive architecture. `docs/overview.html`: overview with sprites.
+- `site/index.md`: Pages source.
+
+Full technical reference: https://github.com/frieren-labs/frieren-desk/blob/main/quickshell/frieren/README.md
+Architecture diagram: https://github.com/frieren-labs/frieren-desk/blob/main/docs/architecture.html
+Hyprland hook: https://github.com/frieren-labs/frieren-desk/blob/main/hypr/frieren.lua
+Installer: https://github.com/frieren-labs/frieren-desk/blob/main/install.sh
+
+## Contributing and checks
+
+- English everywhere in code, docs, commits. Conventional Commits. Branches: `feature/`, `fix/`, `docs/`, `refactor/`.
+- Before a PR run: `bash -n install.sh tools/*.sh quickshell/frieren/hooks/*.sh quickshell/frieren/tools/*.sh`, `qmllint quickshell/frieren/components/*.qml`, `cc -O2 -Wall -o /tmp/frieren-tray-test quickshell/frieren/tray.c $(pkg-config --cflags --libs gio-2.0)`.
+- CI runs on pull requests only. Pushing to `main` triggers a date-tagged release (skipped for docs-only changes).
+- Change map, hard rules, recipes, pitfalls: `.opencode/skills/frieren-pet/SKILL.md` in the repo.

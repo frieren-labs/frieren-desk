@@ -32,6 +32,7 @@ jobs:
           cp assets/showcase/*.png site/assets/img/
           cp quickshell/frieren/assets/frieren-icon.png site/assets/img/
           cp quickshell/frieren/assets/poses/*.png site/assets/img/poses/
+          cp llm.txt site/llm.txt
           ls -R site/assets/
 
       - uses: actions/configure-pages@v6
