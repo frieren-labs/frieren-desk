@@ -7,7 +7,18 @@ Jekyll source for the GitHub Pages site. It is deployed by
 
 Two ways, no Ruby needed on your machine for the Docker one.
 
-### With Docker (no Ruby install)
+### With Docker Compose (recommended)
+
+```bash
+cd site
+docker compose up
+```
+
+`bin/serve.sh` syncs the artwork from the repo into the gitignored
+`assets/` dirs and serves with livereload at <http://localhost:4000>.
+`compose.yaml` mounts the repo read-only at `/repo` for the sync.
+
+### With plain Docker (no Ruby install)
 
 ```bash
 mkdir -p site/assets/img/poses site/assets/audio site/assets/overlay
