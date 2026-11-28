@@ -1,0 +1,19 @@
+name: frieren-site
+
+services:
+  site:
+    image: jekyll/jekyll:pages
+    ports:
+      - "4000:4000"
+      - "35729:35729"
+    volumes:
+      - .:/srv/jekyll
+      - ..:/repo:ro
+      - jekyll-bundle:/usr/local/bundle
+    working_dir: /srv/jekyll
+    stdin_open: true
+    tty: true
+    command: /srv/jekyll/bin/serve.sh
+
+volumes:
+  jekyll-bundle:
