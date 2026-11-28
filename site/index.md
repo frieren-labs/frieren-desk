@@ -53,25 +53,27 @@ The shell parses the JSON events (assistant text, tool calls, errors) and picks 
 pose for each moment. The conversation keeps context across restarts: the opencode
 session id is stored locally and messages live in a SQLite database.
 
-<div class="card-grid" markdown="1">
-
-### Chat bubble
-Click the pet to open it. Markdown replies, selectable text, copy buttons on
-replies and code blocks, slash-command completion.
-
-### Real tray icon
-A native StatusNotifier helper (`tray.c`, compiled by the installer) with a
-short menu (pet, chat, settings, about, quit). About 7 MB RSS, zero idle CPU.
-
-### Wandering pet
-She breathes, blinks, bobs, leans toward your cursor and wanders on her own.
-Drop her on the top bar or bottom dock to minimize her.
-
-### Voice replies
-Optional spoken answers through Piper, espeak-ng or spd-say, plus UI sounds
-and desktop notifications for long turns. Opt in to mirror them to Discord
-as embeds (see below).
-
+<div class="card-grid">
+  <div class="card">
+    <div class="card-icon" aria-hidden="true">💬</div>
+    <h3>Chat bubble</h3>
+    <p>Click the pet to open it. Markdown replies, selectable text, copy buttons on replies and code blocks, slash-command completion.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon" aria-hidden="true">🔔</div>
+    <h3>Real tray icon</h3>
+    <p>A native StatusNotifier helper (<code>tray.c</code>, compiled by the installer) with a short menu (pet, chat, settings, about, quit). About 7 MB RSS, zero idle CPU.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon" aria-hidden="true">🚶</div>
+    <h3>Wandering pet</h3>
+    <p>She breathes, blinks, bobs, leans toward your cursor and wanders on her own. Drop her on the top bar or bottom dock to minimize her.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon" aria-hidden="true">🔊</div>
+    <h3>Voice replies</h3>
+    <p>Optional spoken answers through Piper, espeak-ng or spd-say, plus UI sounds and desktop notifications for long turns. Opt in to mirror them to Discord as embeds (see below).</p>
+  </div>
 </div>
 
 </section>
