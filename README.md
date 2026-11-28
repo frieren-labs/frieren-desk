@@ -4,8 +4,9 @@
 
 A chibi Frieren that lives on your Hyprland desktop. Drag her around, click her
 to chat with [opencode](https://opencode.ai), and ask her to read, edit or run
-things on the system. She reacts to what is happening (thinking, casting,
-success, error, sleep), wanders on her own, and minimizes to a real tray icon
+things on the system. She reacts to what is happening (talking, listening,
+thinking, casting, success, error, sleep), greets on wake, wanders on her own
+with a two-frame walk cycle, and minimizes to a real tray icon
 with a settings menu.
 
 ## Install
@@ -76,14 +77,21 @@ to opencode auth import only.
 
 | Pose | When it shows | Chat line |
 | --- | --- | --- |
-| `idle` | waiting, or wandering around | `ask me something` |
-| `think` | opencode is reasoning | `thinking…` |
+| `idle` | waiting | `ask me something` |
+| `talk` | answering (`busy`) | `answering…` |
+| `listen` | chat open, no task running | `listening…` |
+| `greet` | she wakes up | `hello!` |
+| `walk` | wandering (`walk-1`/`walk-2`, 380 ms) | `stretching my legs…` |
+| `think` | daydreaming after 60 idle seconds | `pondering…` |
 | `cast` | a tool is running | `casting a spell…` |
 | `reading` | a read-like tool is running | `reading…` |
-| `happy` | a task finished, or she wakes up | `done` |
+| `happy` | a task finished | `done` |
 | `celebrate` | third clean turn in a row | `amazing!` |
 | `sad` | an error came back | `oops…` |
 | `sleep` | idle for a while with sleep enabled | `zzz…` |
+
+`blink` is a transient eye overlay, not a mood: it covers the pose eyes
+briefly while idle with blink enabled.
 
 ### In action (real screenshots)
 
