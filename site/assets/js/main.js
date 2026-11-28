@@ -55,6 +55,12 @@
     reading: "{{ '/assets/img/poses/reading.png' | relative_url }}"
   };
   var walkFrame = false;
+  var lastWalkAt = 0;
+  var WALK_FRAME_MS = 190;
+  Object.keys(POSES).forEach(function (k) {
+    var im = new Image();
+    im.src = POSES[k];
+  });
   var QA = [
     {
       q: "How do I install?",
@@ -132,6 +138,7 @@
 
   function openChat() {
     chatOpen = true;
+    mascot.classList.remove("walking");
     panel.classList.add("open");
     face.src = POSES.listen;
   }
@@ -175,12 +182,16 @@
     if (dist < 4) {
       pos.waitUntil = now + 2500 + Math.random() * 4000;
       pickTarget();
+      mascot.classList.remove("walking");
       if (!chatOpen && !dragging) face.src = POSES.idle;
       return;
     }
     var step = Math.min(dist, 1.1);
     pos.x += (dx / dist) * step;
     pos.y += (dy / dist) * step;
+    mascot.classList.add("walking");
+    if (now - lastWalkAt < WALK_FRAME_MS) return;
+    lastWalkAt = now;
     walkFrame = !walkFrame;
     if (!chatOpen && !dragging) face.src = walkFrame ? POSES.walk2 : POSES.walk1;
   }
@@ -193,6 +204,7 @@
 
   mascot.addEventListener("pointerdown", function (e) {
     dragging = true;
+    mascot.classList.remove("walking");
     downX = e.clientX;
     downY = e.clientY;
     grabDX = e.clientX - pos.x;
@@ -216,6 +228,7 @@
     if (!dragging) return;
     dragging = false;
     mascot.classList.remove("dragging");
+    mascot.classList.remove("walking");
     var moved = Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY);
     if (moved < 6) {
       if (chatOpen) closeChat();
