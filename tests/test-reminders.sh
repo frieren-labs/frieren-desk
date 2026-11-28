@@ -47,7 +47,13 @@ sqlite3 "$DB" "INSERT INTO reminders (title, due_at) VALUES ('evening item', $EV
 pass "date-based seeds round-trip through SQLite"
 
 # The old modifier-built bound (UTC midnight) drops the local evening.
-OLD_BOUND="$(sqlite3 "$DB" "SELECT strftime('%s','now','+1 day','start of day');")"
+# It is anchored to local noon on purpose: anchored to real `now`, the UTC
+# day rollover moves the bound a full day forward between 21:00 and 00:00
+# local time and the assertion below becomes time-of-day dependent.
+# NOTE: no -u flag on the anchor: it would parse the time as UTC instead
+# of local time. The epoch value is zone independent.
+ANCHOR="$(date -d 'today 12:00' +%s)"
+OLD_BOUND="$(sqlite3 "$DB" "SELECT strftime('%s',$ANCHOR,'unixepoch','+1 day','start of day');")"
 old_count="$(sqlite3 "$DB" "SELECT count(*) FROM reminders WHERE done = 0 AND due_at < $OLD_BOUND;")"
 [ "$old_count" = "1" ] || fail "old UTC bound should match 1 row (overdue only), got $old_count"
 pass "old UTC bound reproduces the evening drop"
