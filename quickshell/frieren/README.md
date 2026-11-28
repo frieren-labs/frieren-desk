@@ -316,15 +316,21 @@ sqlite3 ~/.local/state/frieren/frieren.db \
 
 ## Animations
 
-The six poses live in `assets/poses/` (`idle`, `think`, `cast`, `happy`, `sad`,
-`sleep`) and are described by `poses.json`. QML picks a pose from the shell
-state and cross-fades between them. On top of the pose it adds breathing,
-bobbing, sway, blinking, hover lean, drag tilt, thought dots, a staff glow and
+The fourteen poses live in `assets/poses/` (`idle`, `think`, `cast`, `happy`,
+`sad`, `sleep`, `celebrate`, `reading`, `talk`, `listen`, `greet`, `blink`,
+`walk-1`, `walk-2`) and are described by `poses.json`, which also carries the
+per-mood hint lines. QML picks a pose from the shell state and cross-fades
+between them. On top of the pose it adds breathing, bobbing, sway, blinking,
+hover lean, drag tilt, thought dots, a staff glow and
 particles while a tool runs, a jump and sparkles on success, a shake and an
-exclamation bubble on error, floating `z`s while sleeping, and wandering.
+exclamation bubble on error, floating `z`s while sleeping, and wandering with
+a lean into the walk direction.
 
 `PetSprite.qml` owns the state machine and the timers. The shell passes `busy`,
 `toolActive`, `chatOpen`, `lookDir`, `streak`, the animation toggles and the scale.
+Mood sources: `talk` while busy, `listen` with the chat open, `greet` on wake,
+a `walk-1`/`walk-2` cycle every 380 ms while wandering, and `think`
+(daydreaming) after 60 idle seconds.
 Extra moods with real art: `reading` (grimoire, while a read-like tool runs)
 and `celebrate` (arms up plus sparkles, on the third clean turn in a row).
 
@@ -356,6 +362,14 @@ and `celebrate` (arms up plus sparkles, on the third clean turn in a row).
 │       ├── happy.png
 │       ├── sad.png
 │       ├── sleep.png
+│       ├── celebrate.png
+│       ├── reading.png
+│       ├── talk.png
+│       ├── listen.png
+│       ├── greet.png
+│       ├── blink.png
+│       ├── walk-1.png
+│       ├── walk-2.png
 │       └── poses.json
 ```
 
