@@ -44,11 +44,17 @@
   var POSES = {
     idle: "{{ '/assets/img/poses/idle.png' | relative_url }}",
     think: "{{ '/assets/img/poses/think.png' | relative_url }}",
+    talk: "{{ '/assets/img/poses/talk.png' | relative_url }}",
+    listen: "{{ '/assets/img/poses/listen.png' | relative_url }}",
+    greet: "{{ '/assets/img/poses/greet.png' | relative_url }}",
+    walk1: "{{ '/assets/img/poses/walk-1.png' | relative_url }}",
+    walk2: "{{ '/assets/img/poses/walk-2.png' | relative_url }}",
     cast: "{{ '/assets/img/poses/cast.png' | relative_url }}",
     happy: "{{ '/assets/img/poses/happy.png' | relative_url }}",
     celebrate: "{{ '/assets/img/poses/celebrate.png' | relative_url }}",
     reading: "{{ '/assets/img/poses/reading.png' | relative_url }}"
   };
+  var walkFrame = false;
   var QA = [
     {
       q: "How do I install?",
@@ -77,7 +83,7 @@
     },
     {
       q: "Does she talk?",
-      pose: "idle",
+      pose: "talk",
       a: "Yes, voice replies through Piper or espeak, plus UI sounds. Tune it from <a href=\"#controls\">Controls</a>."
     }
   ];
@@ -127,7 +133,7 @@
   function openChat() {
     chatOpen = true;
     panel.classList.add("open");
-    face.src = POSES.think;
+    face.src = POSES.listen;
   }
   function closeChat() {
     chatOpen = false;
@@ -169,11 +175,14 @@
     if (dist < 4) {
       pos.waitUntil = now + 2500 + Math.random() * 4000;
       pickTarget();
+      if (!chatOpen && !dragging) face.src = POSES.idle;
       return;
     }
     var step = Math.min(dist, 1.1);
     pos.x += (dx / dist) * step;
     pos.y += (dy / dist) * step;
+    walkFrame = !walkFrame;
+    if (!chatOpen && !dragging) face.src = walkFrame ? POSES.walk2 : POSES.walk1;
   }
 
   var grabDX = 0;

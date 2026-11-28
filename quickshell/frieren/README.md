@@ -328,9 +328,19 @@ a lean into the walk direction.
 
 `PetSprite.qml` owns the state machine and the timers. The shell passes `busy`,
 `toolActive`, `chatOpen`, `lookDir`, `streak`, the animation toggles and the scale.
-Mood sources: `talk` while busy, `listen` with the chat open, `greet` on wake,
-a `walk-1`/`walk-2` cycle every 380 ms while wandering, and `think`
-(daydreaming) after 60 idle seconds.
+
+| Mood | Trigger |
+| --- | --- |
+| `talk` | `busy` (answering) |
+| `listen` | `chatOpen` with no task running |
+| `greet` | `reaction == "wake"` |
+| `walk` | `wandering` (`walk-1`/`walk-2` every 380 ms, leaning into the direction) |
+| `think` | daydreaming after 60 idle seconds |
+| `cast` / `reading` | `toolActive` / read-like tool |
+| `happy` / `celebrate` | `reaction == "ok"` (celebrate on 3+ streak) |
+| `sad` | `reaction == "error"` |
+| `sleep` | `asleep` after 180 idle seconds |
+
 Extra moods with real art: `reading` (grimoire, while a read-like tool runs)
 and `celebrate` (arms up plus sparkles, on the third clean turn in a row).
 

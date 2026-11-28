@@ -93,9 +93,11 @@ Item {
     }
 
     // Walk alternates two frames; every other mood is a single pose file.
-    readonly property string poseKey: root.mood === "walk"
-        ? (root.walkTick ? "walk-2" : "walk-1")
-        : root.mood
+    readonly property string poseKey: {
+        if (root.mood !== "walk") return root.mood;
+        if (root.walkTick) return "walk-2";
+        return "walk-1";
+    }
 
     readonly property var poseMeta: root.poses[root.poseKey] || root.poses["idle"] || null
     readonly property string poseUrl: {
