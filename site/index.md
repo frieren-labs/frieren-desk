@@ -89,11 +89,15 @@ and floating `z`s while she sleeps.
 
 | Pose | When it shows | Chat line |
 | --- | --- | --- |
-| `idle` | waiting, or wandering around | `ask me something` |
-| `think` | opencode is reasoning | `thinking...` |
+| `idle` | waiting | `ask me something` |
+| `think` | daydreaming after a minute idle | `pondering...` |
+| `talk` | answering | `answering...` |
+| `listen` | chat open, no task running | `listening...` |
+| `greet` | she wakes up | `hello!` |
+| `walk` | wandering (`walk-1`/`walk-2`, 380 ms) | `stretching my legs...` |
 | `cast` | a tool is running | `casting a spell...` |
 | `reading` | a read-like tool is running | `reading...` |
-| `happy` | a task finished, or she wakes up | `done` |
+| `happy` | a task finished | `done` |
 | `celebrate` | third clean turn in a row | `amazing!` |
 | `sad` | an error came back | `oops...` |
 | `sleep` | idle for a while with sleep enabled | `zzz...` |
@@ -237,7 +241,7 @@ An <code>OPENCODE_API_KEY</code> in the environment also counts as connected.
 </section>
 
 <section id="controls" markdown="1">
-<img class="deco" src="{{ '/assets/img/poses/reading.png' | relative_url }}" alt="" aria-hidden="true" loading="lazy">
+<img class="deco" src="{{ '/assets/img/poses/listen.png' | relative_url }}" alt="" aria-hidden="true" loading="lazy">
 
 ## Controls and chat
 
@@ -296,7 +300,7 @@ qs -c frieren ipc call frieren quit
 </section>
 
 <section id="helpers" markdown="1">
-<img class="deco" src="{{ '/assets/img/poses/cast.png' | relative_url }}" alt="" aria-hidden="true" loading="lazy">
+<img class="deco" src="{{ '/assets/img/poses/talk.png' | relative_url }}" alt="" aria-hidden="true" loading="lazy">
 
 ## Artifacts (helper CLIs)
 
@@ -349,7 +353,7 @@ about 5 MB.
 </section>
 
 <section id="config" markdown="1">
-<img class="deco" src="{{ '/assets/img/poses/idle.png' | relative_url }}" alt="" aria-hidden="true" loading="lazy">
+<img class="deco" src="{{ '/assets/img/poses/greet.png' | relative_url }}" alt="" aria-hidden="true" loading="lazy">
 
 ## Config file
 
@@ -392,7 +396,7 @@ never in argv, logs or state files.
 </section>
 
 <section id="source" markdown="1">
-<img class="deco" src="{{ '/assets/img/poses/celebrate.png' | relative_url }}" alt="" aria-hidden="true" loading="lazy">
+<img class="deco" src="{{ '/assets/img/poses/walk-1.png' | relative_url }}" alt="" aria-hidden="true" loading="lazy">
 
 ## Source and contributions
 

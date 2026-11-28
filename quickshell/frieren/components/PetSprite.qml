@@ -34,6 +34,7 @@ Item {
     property int streak: 0
     property int idleSeconds: 0
     property real dragLean: 0
+    property real wanderLean: 0
     property real shakeX: 0
     property real castPhase: 0
     property real sleepPhase: 0
@@ -57,6 +58,9 @@ Item {
 
     // ---------------- poses ----------------
     property var poses: ({})
+    property var hints: ({})
+    property bool walkTick: false
+    property int hintTick: 0
 
     FileView {
         path: root.assets + "poses/poses.json"
@@ -65,25 +69,37 @@ Item {
             try {
                 const doc = JSON.parse(text());
                 root.poses = doc.poses || ({});
+                root.hints = doc.hints || ({});
             } catch (e) {
                 root.poses = ({});
+                root.hints = ({});
             }
         }
     }
 
     readonly property string mood: {
         if (reaction === "error") return "sad";
-        if (reaction === "ok" || reaction === "wake")
+        if (reaction === "wake") return "greet";
+        if (reaction === "ok")
             return streak >= 3 ? "celebrate" : "happy";
         if (asleep) return "sleep";
         if (reading) return "reading";
         if (toolActive) return "cast";
-        if (busy) return "think";
-        if (wandering) return "walk"; // no dedicated pose: falls back to idle
+        if (busy) return "talk";
+        if (chatOpen) return "listen";
+        if (wandering) return "walk";
+        if (idleSeconds >= 60) return "think"; // daydreaming before sleep
         return "idle";
     }
 
-    readonly property var poseMeta: root.poses[root.mood] || root.poses["idle"] || null
+    // Walk alternates two frames; every other mood is a single pose file.
+    readonly property string poseKey: {
+        if (root.mood !== "walk") return root.mood;
+        if (root.walkTick) return "walk-2";
+        return "walk-1";
+    }
+
+    readonly property var poseMeta: root.poses[root.poseKey] || root.poses["idle"] || null
     readonly property string poseUrl: {
         const meta = root.poseMeta;
         if (meta && meta.file) return root.assets + "poses/" + meta.file;
@@ -111,7 +127,8 @@ Item {
         return Math.max(-6, Math.min(6, ((mouse.mouseX / width) - 0.5) * 10));
     }
     readonly property real chatLean: root.chatOpen ? 2.5 * root.lookDir : 0
-    readonly property real leanAngle: hoverLean + dragLean + chatLean
+    readonly property real leanAngle: hoverLean + dragLean + wanderLean + chatLean
+    Behavior on wanderLean { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
     Behavior on dragLean { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
     // ---------------- status label ----------------
@@ -123,15 +140,24 @@ Item {
         return "good evening";
     }
 
+    // Hint lines live in poses.json (data-driven, like the poses);
+    // QML only keeps the dynamic specials.
+    readonly property var hintLines: {
+        const lines = root.hints[root.mood];
+        return Array.isArray(lines) ? lines : [];
+    }
+
     readonly property string hintText: {
         if (root.asleep) return "";
         if (root.reaction === "error") return "oops…";
         if (root.reaction === "ok" || root.reaction === "wake")
             return root.streak >= 3 ? "amazing!" : "done";
+        if (root.hovered && !root.chatOpen) return root.timeGreeting();
+        if (root.hintLines.length > 0)
+            return root.hintLines[root.hintTick % root.hintLines.length];
         if (root.reading) return "reading…";
         if (root.toolActive) return "casting a spell…";
         if (root.busy) return "thinking…";
-        if (root.hovered && !root.chatOpen) return root.timeGreeting();
         return "ask me something";
     }
     readonly property bool hintVisible: hintText.length > 0
@@ -179,6 +205,7 @@ Item {
         if (Math.abs(dx) < 14 && Math.abs(dy) < 14) return;
 
         root.wandering = true;
+        root.wanderLean = Math.max(-8, Math.min(8, dx * 0.06));
         wanderAnim.fromX = root.x;
         wanderAnim.toX = tx;
         wanderAnim.fromY = root.y;
@@ -197,6 +224,7 @@ Item {
             if (root.busy || root.toolActive || root.wandering || root.chatOpen
                     || root.hovered || root.asleep) {
                 root.idleSeconds = 0;
+                root.hintTick += 1;
                 return;
             }
             root.idleSeconds += 1;
@@ -214,6 +242,14 @@ Item {
             if (!root.asleep && root.blinkEnabled && root.eyeRects.length > 0 && root.reaction === "")
                 blinkAnim.restart();
         }
+    }
+
+    Timer {
+        id: walkTimer
+        interval: 380
+        repeat: true
+        running: root.wandering
+        onTriggered: root.walkTick = !root.walkTick
     }
 
     Timer {
@@ -304,6 +340,7 @@ Item {
         }
         onFinished: {
             root.wandering = false;
+            root.wanderLean = 0;
             root.moved(root.x, root.y);
             root.resetIdle();
         }
@@ -740,6 +777,7 @@ Item {
             root.resetIdle();
             wanderAnim.stop();
             root.wandering = false;
+            root.wanderLean = 0;
         }
 
         onPositionChanged: {

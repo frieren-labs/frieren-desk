@@ -140,6 +140,164 @@
         58,
         104
       ]
+    },
+    "talk": {
+      "file": "talk.png",
+      "eyes": [
+        [
+          94,
+          56,
+          12,
+          15
+        ],
+        [
+          125,
+          58,
+          12,
+          13
+        ]
+      ],
+      "skin": "#fceadb",
+      "glow": [
+        58,
+        115
+      ]
+    },
+    "listen": {
+      "file": "listen.png",
+      "eyes": [
+        [
+          90,
+          58,
+          13,
+          13
+        ],
+        [
+          120,
+          59,
+          12,
+          12
+        ]
+      ],
+      "skin": "#fceadb",
+      "glow": [
+        66,
+        112
+      ]
+    },
+    "greet": {
+      "file": "greet.png",
+      "eyes": [
+        [
+          93,
+          64,
+          13,
+          11
+        ],
+        [
+          124,
+          64,
+          13,
+          11
+        ]
+      ],
+      "skin": "#fceadb",
+      "glow": [
+        53,
+        112
+      ]
+    },
+    "blink": {
+      "file": "blink.png",
+      "eyes": [],
+      "skin": "#fceadb",
+      "glow": [
+        53,
+        112
+      ]
+    },
+    "walk-1": {
+      "file": "walk-1.png",
+      "eyes": [
+        [
+          93,
+          76,
+          12,
+          11
+        ],
+        [
+          122,
+          76,
+          13,
+          11
+        ]
+      ],
+      "skin": "#f9e5d5",
+      "glow": [
+        50,
+        115
+      ]
+    },
+    "walk-2": {
+      "file": "walk-2.png",
+      "eyes": [
+        [
+          92,
+          78,
+          12,
+          10
+        ],
+        [
+          120,
+          78,
+          11,
+          10
+        ]
+      ],
+      "skin": "#f9e5d5",
+      "glow": [
+        86,
+        115
+      ]
     }
+  },
+  "hints": {
+    "idle": [
+      "ask me something"
+    ],
+    "talk": [
+      "answering…",
+      "writing it down…"
+    ],
+    "listen": [
+      "listening…",
+      "go on…"
+    ],
+    "think": [
+      "pondering…",
+      "hmm…"
+    ],
+    "cast": [
+      "casting a spell…"
+    ],
+    "reading": [
+      "reading…"
+    ],
+    "greet": [
+      "hello!"
+    ],
+    "walk": [
+      "stretching my legs…"
+    ],
+    "sleep": [],
+    "celebrate": [
+      "amazing!"
+    ],
+    "happy": [
+      "done"
+    ],
+    "sad": [
+      "oops…"
+    ]
   }
 }
